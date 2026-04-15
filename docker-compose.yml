@@ -1,0 +1,76 @@
+# ============================================================
+#  面经助手 - Docker Compose 部署配置
+#  包含: xiaohongshu-mcp + 面经助手(前端+后端)
+# ============================================================
+#
+# 使用方法:
+#   1. docker compose up -d          # 启动所有服务
+#   2. docker compose logs -f        # 查看日志
+#   3. docker compose stop           # 停止服务
+#   4. docker compose down           # 停止并删除容器
+#
+# 访问地址:
+#   - 面经助手网站: http://localhost:5173
+#   - 后端API:    http://localhost:3001
+#   - MCP服务:    http://localhost:18060/mcp
+#
+# ⚠️ 重要: 首次启动后需要登录小红书，见下方说明
+
+services:
+  # ==========================================
+  #  xiaohongshu-mcp 服务
+  #  负责: 控制浏览器操作小红书
+  # ==========================================
+  xiaohongshu-mcp:
+    # 阿里云镜像源（国内用户，Docker Hub被墙时使用）
+    image: crpi-hocnvtkomt7w9v8t.cn-beijing.personal.cr.aliyuncs.com/xpzouying/xiaohongshu-mcp
+    # Docker Hub 镜像（海外用户或已配置代理）
+    # image: xpzouying/xiaohongshu-mcp
+    container_name: xhs-mcp
+    restart: unless-stopped
+    init: true
+    tty: true
+    ports:
+      - "18060:18060"
+    volumes:
+      # 持久化 cookies，避免每次重启都要重新登录
+      - ./docker-data/cookies:/app/data
+      - ./docker-data/images:/app/images
+    environment:
+      - ROD_BROWSER_BIN=/usr/bin/google-chrome
+      - COOKIES_PATH=/app/data/cookies.json
+      # 如需代理，取消注释并修改
+      # - XHS_PROXY=http://host.docker.internal:7890
+      - TZ=Asia/Shanghai
+
+  # ==========================================
+  #  面经助手 (前端 + 后端代理)
+  #  负责: 网站展示 + API代理
+  # ==========================================
+  mianshi-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mianshi-app
+    restart: unless-stopped
+    ports:
+      - "5173:3001"    # 将容器的3001端口映射到宿主机5173
+    volumes:
+      # 共享 MCP 的 cookies，用于 Web API 搜索
+      - ./docker-data/cookies:/app/docker-data/cookies
+    environment:
+      - NODE_ENV=production
+      - MCP_URL=http://xiaohongshu-mcp:18060/mcp
+      - COOKIES_PATH=/app/docker-data/cookies/cookies.json
+      # MySQL 数据库配置（连接本地 MySQL）
+      - DB_HOST=host.docker.internal
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASS=123456
+      - DB_NAME=mianshi_app
+      - TZ=Asia/Shanghai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      xiaohongshu-mcp:
+        condition: service_started

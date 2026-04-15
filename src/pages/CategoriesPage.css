@@ -1,0 +1,153 @@
+.categories-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.category-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cat-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  color: #475569;
+}
+
+.cat-nav-item:hover {
+  border-color: #c7d2fe;
+  background: #fafafe;
+}
+
+.cat-nav-item.active {
+  border-color: var(--nav-color);
+  background: color-mix(in srgb, var(--nav-color) 5%, white);
+  color: var(--nav-color);
+  font-weight: 600;
+}
+
+.nav-icon {
+  font-size: 20px;
+}
+
+.nav-label {
+  font-weight: 500;
+}
+
+.nav-count {
+  padding: 2px 8px;
+  background: #f1f5f9;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.cat-nav-item.active .nav-count {
+  background: color-mix(in srgb, var(--nav-color) 15%, white);
+  color: var(--nav-color);
+}
+
+/* Category Info */
+.category-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  background: white;
+  border-radius: 16px;
+  border-left: 4px solid;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.info-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.info-icon {
+  font-size: 40px;
+}
+
+.info-left h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.info-left p {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+.info-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.info-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.info-stat-number {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.info-stat-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Category Posts */
+.category-posts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: #94a3b8;
+}
+
+.empty-icon {
+  font-size: 48px;
+}
+
+.empty-state p {
+  font-size: 16px;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .category-info {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .category-posts {
+    grid-template-columns: 1fr;
+  }
+}
