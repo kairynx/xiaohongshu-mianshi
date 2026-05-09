@@ -1,16 +1,9 @@
 import { useApp } from '../context/AppContext';
+import { CATEGORY_COLORS } from '../constants';
 import './PostCard.css';
 
 export default function PostCard({ post, onSelect }) {
   const { toggleStatus, deletePost, setPriority } = useApp();
-
-  const categoryColors = {
-    frontend: '#3b82f6',
-    backend: '#10b981',
-    testdev: '#f59e0b',
-    mobile: '#ef4444',
-    product: '#8b5cf6'
-  };
 
   const priorityLabels = {
     high: '高优先',
@@ -30,7 +23,7 @@ export default function PostCard({ post, onSelect }) {
         <div className="card-meta">
           <span
             className="category-badge"
-            style={{ backgroundColor: categoryColors[post.category] + '20', color: categoryColors[post.category] }}
+            style={{ backgroundColor: CATEGORY_COLORS[post.category] + '20', color: CATEGORY_COLORS[post.category] }}
           >
             {post.categoryName}
           </span>

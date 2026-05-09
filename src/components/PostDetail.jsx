@@ -1,18 +1,11 @@
 import { useState } from 'react';
+import { CATEGORY_COLORS } from '../constants';
 import './PostDetail.css';
 
 export default function PostDetail({ post, onClose }) {
   const [activeTab, setActiveTab] = useState('content');
 
   if (!post) return null;
-
-  const categoryColors = {
-    frontend: '#3b82f6',
-    backend: '#10b981',
-    testdev: '#f59e0b',
-    mobile: '#ef4444',
-    product: '#8b5cf6'
-  };
 
   // 将markdown内容渲染为HTML
   const renderContent = (text) => {
@@ -44,7 +37,7 @@ export default function PostDetail({ post, onClose }) {
           <div className="modal-header-left">
             <span
               className="category-badge"
-              style={{ backgroundColor: categoryColors[post.category] + '20', color: categoryColors[post.category] }}
+              style={{ backgroundColor: CATEGORY_COLORS[post.category] + '20', color: CATEGORY_COLORS[post.category] }}
             >
               {post.categoryName}
             </span>

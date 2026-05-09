@@ -1,4 +1,5 @@
 import { useApp } from '../context/AppContext';
+import { CATEGORY_COLORS, CATEGORY_NAMES_LIST, CATEGORY_KEYS } from '../constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
@@ -6,18 +7,14 @@ import {
 import { BookOpen, TrendingUp, Eye, Star, Target, Zap } from 'lucide-react';
 import './DashboardPage.css';
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-const CATEGORY_NAMES = ['前端开发', '后端开发', '测试开发', '移动端开发', '产品经理'];
-const CATEGORY_KEYS = ['frontend', 'backend', 'testdev', 'mobile', 'product'];
-
 export default function DashboardPage() {
   const { posts, dashboardStats } = useApp();
 
   // 分类数据
   const categoryData = CATEGORY_KEYS.map((key, i) => ({
-    name: CATEGORY_NAMES[i],
+    name: CATEGORY_NAMES_LIST[i],
     value: dashboardStats.byCategory[key],
-    color: COLORS[i]
+    color: CATEGORY_COLORS[key]
   }));
 
   // 公司数据
@@ -254,7 +251,7 @@ export default function DashboardPage() {
             const rate = catPosts.length > 0 ? Math.round((read / catPosts.length) * 100) : 0;
             return (
               <div key={key} className="table-row">
-                <span className="table-cat" style={{ color: COLORS[i] }}>
+                <span className="table-cat" style={{ color: CATEGORY_COLORS[key] }}>
                   {categoryData[i].name}
                 </span>
                 <span>{catPosts.length}</span>
@@ -263,7 +260,7 @@ export default function DashboardPage() {
                 <span>{high}</span>
                 <span>
                   <div className="mini-progress">
-                    <div className="mini-progress-fill" style={{ width: `${rate}%`, background: COLORS[i] }} />
+                    <div className="mini-progress-fill" style={{ width: `${rate}%`, background: CATEGORY_COLORS[key] }} />
                     <span>{rate}%</span>
                   </div>
                 </span>

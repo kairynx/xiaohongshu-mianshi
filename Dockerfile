@@ -43,4 +43,4 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 EXPOSE 3001
 
 # 启动命令
-CMD ["node", "server/index.cjs"]
+CMD ["node", "server/index.js"]

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import PostCard from '../components/PostCard';
 import PostDetail from '../components/PostDetail';
@@ -10,6 +10,12 @@ export default function PostsPage() {
   const [selectedPost, setSelectedPost] = useState(null);
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [inputValue, setInputValue] = useState(searchQuery);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(inputValue), 300);
+    return () => clearTimeout(timer);
+  }, [inputValue, setSearch]);
 
   const sortedPosts = [...filteredPosts].sort((a, b) => {
     let comparison = 0;
@@ -43,11 +49,11 @@ export default function PostsPage() {
           <input
             type="text"
             placeholder="搜索面经标题、内容、标签、作者..."
-            value={searchQuery}
-            onChange={(e) => setSearch(e.target.value)}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
           />
-          {searchQuery && (
-            <button className="clear-btn" onClick={() => setSearch('')}>✕</button>
+          {inputValue && (
+            <button className="clear-btn" onClick={() => { setInputValue(''); setSearch(''); }}>✕</button>
           )}
         </div>
 

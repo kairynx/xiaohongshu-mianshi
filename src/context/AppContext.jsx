@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
-import { categories } from '../data/mockData';
+import { CATEGORIES } from '../constants';
 
 const AppContext = createContext(null);
 const API_BASE = '/api';
@@ -12,6 +12,7 @@ const initialState = {
   searchQuery: '',
   selectedPost: null,
   loading: true,
+  error: null,
   dashboardStats: {
     total: 0,
     read: 0,
@@ -165,6 +166,12 @@ function appReducer(state, action) {
         dashboardStats: computeStats(merged)
       };
     }
+    case 'SET_ERROR': {
+      return { ...state, error: action.payload };
+    }
+    case 'CLEAR_ERROR': {
+      return { ...state, error: null };
+    }
     case 'REFRESH_STATS': {
       return {
         ...state,
@@ -221,7 +228,7 @@ export function AppProvider({ children }) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus })
-    }).catch(() => {});
+    }).catch(() => dispatch({ type: 'SET_ERROR', payload: '更新状态失败，请检查后端服务' }));
   }, [state.posts]);
 
   const setPriority = useCallback((id, priority) => {
@@ -231,13 +238,14 @@ export function AppProvider({ children }) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priority })
-    }).catch(() => {});
+    }).catch(() => dispatch({ type: 'SET_ERROR', payload: '更新优先级失败' }));
   }, []);
 
   const deletePost = useCallback((id) => {
     dispatch({ type: 'DELETE_POST', payload: id });
     // 从数据库删除
-    fetch(`${API_BASE}/posts/${id}`, { method: 'DELETE' }).catch(() => {});
+    fetch(`${API_BASE}/posts/${id}`, { method: 'DELETE' })
+      .catch(() => dispatch({ type: 'SET_ERROR', payload: '删除失败' }));
   }, []);
 
   const addPosts = useCallback((posts) => {
@@ -247,12 +255,12 @@ export function AppProvider({ children }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(posts)
-    }).catch(() => {});
+    }).catch(() => dispatch({ type: 'SET_ERROR', payload: '保存到数据库失败' }));
   }, []);
 
   const value = {
     ...state,
-    categories,
+    categories: CATEGORIES,
     setCategory,
     setSearch,
     selectPost,

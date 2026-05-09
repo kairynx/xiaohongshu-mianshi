@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { CATEGORY_BG_COLORS, CATEGORY_COLORS } from '../constants';
 import { Globe, Search, RefreshCw, CheckCircle, AlertCircle, Loader, Wifi, WifiOff, Link, ExternalLink } from 'lucide-react';
 import './CrawlPage.css';
 
@@ -452,8 +453,8 @@ export default function CrawlPage() {
             {crawlResults.map(post => (
               <div key={post.id} className="result-item">
                 <span className="result-category" style={{
-                  background: { frontend: '#dbeafe', backend: '#d1fae5', testdev: '#fef3c7', mobile: '#fee2e2', product: '#ede9fe' }[post.category],
-                  color: { frontend: '#2563eb', backend: '#059669', testdev: '#d97706', mobile: '#dc2626', product: '#7c3aed' }[post.category]
+                  background: CATEGORY_BG_COLORS[post.category],
+                  color: CATEGORY_COLORS[post.category]
                 }}>
                   {post.categoryName}
                 </span>

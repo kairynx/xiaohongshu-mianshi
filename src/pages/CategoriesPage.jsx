@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { CATEGORY_DETAILS } from '../constants';
 import PostCard from '../components/PostCard';
 import PostDetail from '../components/PostDetail';
 import './CategoriesPage.css';
@@ -12,15 +13,7 @@ export default function CategoriesPage() {
 
   const activeCategory = searchParams.get('cat') || 'frontend';
 
-  const categoryConfig = {
-    frontend: { icon: '🖥️', label: '前端开发', color: '#3b82f6', description: 'React、Vue、JavaScript、CSS、浏览器原理等前端技术面试经验' },
-    backend: { icon: '⚙️', label: '后端开发', color: '#10b981', description: 'Java、Go、Python、数据库、分布式系统等后端技术面试经验' },
-    testdev: { icon: '🧪', label: '测试开发', color: '#f59e0b', description: '自动化测试、性能测试、安全测试、CI/CD等测试开发面试经验' },
-    mobile: { icon: '📱', label: '移动端开发', color: '#ef4444', description: 'iOS、Android、Flutter、React Native等移动端面试经验' },
-    product: { icon: '📊', label: '产品经理', color: '#8b5cf6', description: '产品设计、数据分析、用户研究、增长策略等产品面试经验' },
-  };
-
-  const config = categoryConfig[activeCategory];
+  const config = CATEGORY_DETAILS[activeCategory];
   const categoryPosts = posts.filter(p => p.category === activeCategory);
 
   return (
@@ -32,7 +25,7 @@ export default function CategoriesPage() {
 
       {/* 分类导航 */}
       <div className="category-nav">
-        {Object.entries(categoryConfig).map(([key, cfg]) => (
+        {Object.entries(CATEGORY_DETAILS).map(([key, cfg]) => (
           <button
             key={key}
             className={`cat-nav-item ${activeCategory === key ? 'active' : ''}`}

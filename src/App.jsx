@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
+import { useApp } from './context/AppContext';
+import { useToast } from './components/Toast';
 import HomePage from './pages/HomePage';
 import PostsPage from './pages/PostsPage';
 import CategoriesPage from './pages/CategoriesPage';
@@ -8,6 +11,15 @@ import CrawlPage from './pages/CrawlPage';
 import './App.css';
 
 function App() {
+  const { error } = useApp();
+  const addToast = useToast();
+
+  useEffect(() => {
+    if (error && addToast) {
+      addToast(error, 'error');
+    }
+  }, [error, addToast]);
+
   return (
     <div className="app">
       <Sidebar />
