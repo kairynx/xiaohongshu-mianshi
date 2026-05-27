@@ -3,11 +3,12 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { execFile, execSync } = require('child_process');
+const { execFile } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const mysql = require('mysql2/promise');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = 3001;
@@ -227,49 +228,27 @@ async function downloadImage(url) {
   return tmpFile;
 }
 
-// 检测可用的 ImageMagick 命令（Windows 用 magick，Linux/Mac 可能用 convert）
-let imagemagickCmd = null;
-try {
-  execSync('magick --version', { stdio: 'ignore' });
-  imagemagickCmd = 'magick';
-  console.log('  ImageMagick: using "magick" command');
-} catch {
-  try {
-    execSync('convert --version', { stdio: 'ignore' });
-    imagemagickCmd = 'convert';
-    console.log('  ImageMagick: using "convert" command');
-  } catch {
-    console.log('  ⚠️ ImageMagick not found, OCR preprocessing disabled');
-  }
-}
-
 /**
- * 图片预处理：转 PNG + 放大 + 灰度 + 增强对比度 + 去噪
- * 使用 ImageMagick
+ * 图片预处理：WebP/任意格式 → PNG + 灰度 + 放大 + 增强对比度 + 锐化
+ * 使用 sharp（纯 Node.js，无系统依赖）
  * @param {string} inputPath - 原始图片路径
- * @returns {string} 预处理后的图片路径
+ * @returns {string} 预处理后的 PNG 图片路径
  */
 async function preprocessImage(inputPath) {
-  if (!imagemagickCmd) return inputPath;
   const outputPath = inputPath + '_processed.png';
   try {
-    await new Promise((resolve, reject) => {
-      execFile(imagemagickCmd, [
-        inputPath,
-        '-colorspace', 'Gray',
-        '-normalize',
-        '-resize', '2000x>',
-        '-unsharp', '1.5x1+0.7+0.02',
-        'PNG:' + outputPath
-      ], { timeout: 30000 }, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await sharp(inputPath)
+      .grayscale()
+      .normalize()
+      .resize(2000, null, { withoutEnlargement: false })
+      .sharpen({ sigma: 1.5, m1: 0.7, m2: 0.02 })
+      .png()
+      .toFile(outputPath);
     try { fs.unlinkSync(inputPath); } catch {}
     return outputPath;
   } catch (e) {
-    console.log('    ImageMagick 预处理失败，使用原图:', e.message);
+    console.log('    Sharp 预处理失败: ' + e.message);
+    // 兜底：尝试直接传原图给 Tesseract（仅当原图是 PNG/JPEG 时有效）
     return inputPath;
   }
 }
@@ -693,22 +672,47 @@ app.post('/api/mcp/feed/batch', async (req, res) => {
         continue;
       }
 
-      // 提取文字描述
+      // 提取文字描述——兼容多种 MCP 响应结构
       const note = detail?.data?.note || detail?.note || detail;
       const noteType = note?.type || '';
-      let content = note?.desc || note?.description || note?.title || detail?.desc || detail?.title || '';
+
+      // 判断是否为数组或类数组对象（keys 全是数字）
+      const isArray = Array.isArray(note);
+      const isArrayLike = !isArray && note && typeof note === 'object' &&
+        Object.keys(note).length > 0 &&
+        Object.keys(note).every(k => /^\d+$/.test(k));
+
+      let content = '';
+      if (isArray || isArrayLike) {
+        // MCP 返回了列表格式，从各元素中搜索有用内容
+        const values = isArray ? note : Object.values(note);
+        for (const item of values) {
+          if (item && typeof item === 'object') {
+            content = item.desc || item.description || item.title || item.text || content;
+            if (content) break;
+          }
+        }
+        if (!content) {
+          content = values.filter(v => typeof v === 'string').join('\n');
+        }
+      } else {
+        content = note?.desc || note?.description || note?.title || '';
+      }
+      if (!content) {
+        content = detail?.desc || detail?.title || '';
+      }
+
       const imageCount = note?.imageList?.length || note?.image_list?.length || 0;
       const hasVideo = !!(note?.video || detail?.data?.video);
 
-      // 诊断：当 note 存在但内容为空时，打印详细结构
-      if (note && !content && imageCount === 0 && !hasVideo) {
-        console.log(`    ⚠️ note 存在但内容为空！note keys: ${JSON.stringify(Object.keys(note))}`);
-        if (detail?.data) console.log(`    detail.data keys: ${JSON.stringify(Object.keys(detail.data))}`);
-        if (Array.isArray(detail)) console.log(`    detail 是数组！长度: ${detail.length}`);
-        console.log(`    note.type: "${noteType}", note.title: "${(note?.title || '').slice(0, 30)}"`);
-        if (note.desc) { content = note.desc; console.log(`    → 从 note.desc 提取到内容`); }
-        if (note.description) { content = note.description; console.log(`    → 从 note.description 提取到内容`); }
-        if (note.title) { content = note.title; console.log(`    → 从 note.title 提取到内容`); }
+      // 诊断：内容仍为空时打印结构
+      if (!content && imageCount === 0 && !hasVideo) {
+        const keys = Object.keys(note || {});
+        console.log(`    ⚠️ content empty! keys: ${JSON.stringify(keys.slice(0, 5))}...(${keys.length}), isArray:${isArray}, isArrayLike:${isArrayLike}`);
+        if (isArrayLike && note) {
+          const firstVal = note[keys[0]];
+          console.log(`    note[0] type: ${typeof firstVal}, sample: ${JSON.stringify(firstVal).slice(0, 120)}`);
+        }
       }
 
       console.log(`    note: ${!!note}, type: ${noteType}, desc: ${content ? content.slice(0, 30) + '...' : '空'}, images: ${imageCount}, video: ${hasVideo}`);
