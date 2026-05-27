@@ -138,17 +138,48 @@ async function mcpNotify(method, params = {}) {
   }, 30000);
 }
 
-// 初始化 MCP 会话
+// 通过 GET 请求建立 SSE 连接并获取 session ID
+async function establishSseSession() {
+  return new Promise((resolve) => {
+    const httpMod = MCP_URL.startsWith('https') ? require('https') : require('http');
+    const req = httpMod.get(MCP_URL, {
+      headers: { 'Accept': 'text/event-stream' },
+      timeout: 10000
+    }, (res) => {
+      const sid = res.headers['mcp-session-id'];
+      res.destroy();  // 不需要 SSE 消息体，只需要 session ID
+      resolve(sid || '');
+    });
+    req.on('error', () => resolve(''));
+    req.on('timeout', () => { req.destroy(); resolve(''); });
+  });
+}
+
+// 初始化 MCP 会话（Streamable HTTP transport）
 async function ensureMcpInit() {
   if (mcpInitialized) return;
-  await mcpRequest('initialize', {
+
+  // Step 1: GET 建立 SSE 连接获取 session ID
+  if (!mcpSessionId) {
+    const sid = await establishSseSession();
+    if (sid) {
+      mcpSessionId = sid;
+      console.log('  SSE session: ' + sid);
+    }
+  }
+
+  // Step 2: 发送 initialize 请求
+  const result = await mcpRequest('initialize', {
     protocolVersion: '2024-11-05',
     capabilities: {},
     clientInfo: { name: 'mianshi-app', version: '1.0.0' }
   });
+  console.log('  MCP initialize: ' + JSON.stringify(result?.serverInfo || result).slice(0, 100));
+
+  // Step 3: 发送 initialized 通知
   await mcpNotify('notifications/initialized', {});
   mcpInitialized = true;
-  console.log('  MCP session initialized, sessionId=' + mcpSessionId);
+  console.log('  MCP session ready, sessionId=' + mcpSessionId);
 }
 
 // 重置会话
