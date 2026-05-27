@@ -687,13 +687,22 @@ app.post('/api/mcp/feed/batch', async (req, res) => {
 
       let content = note?.desc || note?.description || note?.title || '';
 
-      // 如果直接字段为空，尝试从子对象中提取（MCP 可能返回列表嵌套结构）
+      // 如果直接字段为空，尝试从子对象/字符串元素中提取
       if (!content && note && typeof note === 'object') {
         const values = Array.isArray(note) ? note : Object.values(note);
+        // 1) 先找有内容字段的子对象
         for (const item of values) {
           if (item && typeof item === 'object' && !Array.isArray(item)) {
             content = item.desc || item.description || item.title || item.text || '';
             if (content) break;
+          }
+        }
+        // 2) 兜底：全是短字符串（MCP 把文字拆成了单字），拼接起来
+        if (!content) {
+          const strings = values.filter(v => typeof v === 'string');
+          if (strings.length > 10) {
+            content = strings.join('');
+            console.log(`    → 拼接 ${strings.length} 个字符串片段，结果 ${content.length} 字`);
           }
         }
       }
