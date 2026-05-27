@@ -260,8 +260,9 @@ async function preprocessImage(inputPath) {
  */
 function ocrImage(imagePath) {
   return new Promise((resolve) => {
+    const tesseractBin = process.env.TESSERACT_PATH || 'tesseract';
     const runOcr = (psm) => new Promise((res) => {
-      execFile('tesseract', [
+      execFile(tesseractBin, [
         imagePath, 'stdout',
         '-l', 'chi_sim+eng',
         '--psm', String(psm),
