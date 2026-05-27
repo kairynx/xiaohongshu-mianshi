@@ -248,39 +248,21 @@ async function preprocessImage(inputPath) {
  */
 function ocrImage(imagePath) {
   return new Promise((resolve) => {
-    // 先尝试 PSM 6（块文本），失败再尝试 PSM 3（全自动）和 PSM 4（单列）
-    const tryPsm = async (psmModes) => {
-      for (const psm of psmModes) {
-        try {
-          const result = await new Promise((res, rej) => {
-            execFile('tesseract', [
-              imagePath, 'stdout',
-              '-l', 'chi_sim+eng',
-              '--psm', String(psm),
-              '--oem', '1',           // LSTM 引擎（最准确）
-              '-c', 'preserve_interword_spaces=1',  // 保留词间空格
-              '--dpi', '300'          // 告诉 tesseract 图片 DPI
-            ], {
-              timeout: 60000,
-              maxBuffer: 10 * 1024 * 1024
-            }, (error, stdout, stderr) => {
-              if (error) rej(error);
-              else res(stdout.trim());
-            });
-          });
-          if (result && result.length > 10) return result;
-        } catch {}
-      }
-      return '';
-    };
-
-    tryPsm([6, 3, 4]).then(text => {
-      // 清理临时文件
+    execFile('tesseract', [
+      imagePath, 'stdout',
+      '-l', 'chi_sim+eng',
+      '--psm', '6',
+      '--oem', '1',
+      '-c', 'preserve_interword_spaces=1',
+      '--dpi', '300'
+    ], {
+      timeout: 30000,
+      maxBuffer: 10 * 1024 * 1024
+    }, (error, stdout) => {
       try { fs.unlinkSync(imagePath); } catch {}
-      resolve(text);
-    }).catch(() => {
-      try { fs.unlinkSync(imagePath); } catch {}
-      resolve('');
+      if (error) { resolve(''); return; }
+      const text = (stdout || '').trim();
+      resolve(text.length > 10 ? text : '');
     });
   });
 }
@@ -360,8 +342,8 @@ async function ocrFeedDetail(detail) {
   }
 
   console.log(`    Found ${images.length} images for OCR`);
-  // 最多处理前 5 张图片（避免太慢）
-  const limit = Math.min(images.length, 5);
+  // 最多处理前 3 张图片（避免太慢）
+  const limit = Math.min(images.length, 3);
   for (let i = 0; i < limit; i++) {
     const url = images[i];
     if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) continue;
@@ -371,6 +353,41 @@ async function ocrFeedDetail(detail) {
   }
 
   return texts.join('\n\n');
+}
+
+// ============ 输入校验 ============
+
+const VALID_CATEGORIES = ['frontend', 'backend', 'testdev', 'mobile', 'product'];
+const VALID_STATUSES = ['read', 'unread'];
+const VALID_PRIORITIES = ['high', 'medium', 'low'];
+const VALID_CATEGORY_NAMES = ['前端开发', '后端开发', '测试开发', '移动端开发', '产品经理'];
+
+function sanitizeString(val, maxLen = 1000) {
+  if (typeof val !== 'string') return '';
+  return val.slice(0, maxLen).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+}
+
+function sanitizePost(post) {
+  if (!post || typeof post !== 'object') return null;
+  return {
+    id: typeof post.id === 'string' ? post.id.slice(0, 64) : crypto.randomUUID(),
+    title: sanitizeString(post.title, 500),
+    author: sanitizeString(post.author, 100),
+    avatar: sanitizeString(post.avatar, 500),
+    coverUrl: sanitizeString(post.coverUrl, 500),
+    category: VALID_CATEGORIES.includes(post.category) ? post.category : 'frontend',
+    categoryName: VALID_CATEGORY_NAMES.includes(post.categoryName) ? post.categoryName : '前端开发',
+    date: /^\d{4}-\d{2}-\d{2}/.test(post.date) ? post.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    source: sanitizeString(post.source, 200),
+    likes: Math.min(Math.max(parseInt(post.likes) || 0, 0), 999999999),
+    collects: Math.min(Math.max(parseInt(post.collects) || 0, 0), 999999999),
+    tags: Array.isArray(post.tags) ? post.tags.map(t => sanitizeString(String(t), 50)).slice(0, 20) : [],
+    content: sanitizeString(post.content, 100000),
+    noteId: post.noteId || post.note_id || '',
+    xsecToken: post.xsecToken || post.xsec_token || '',
+    status: VALID_STATUSES.includes(post.status) ? post.status : 'unread',
+    priority: VALID_PRIORITIES.includes(post.priority) ? post.priority : 'medium',
+  };
 }
 
 // ============ API 路由 ============
@@ -393,11 +410,14 @@ app.post('/api/posts', async (req, res) => {
     if (!dbPool) return res.status(503).json({ success: false, error: 'MySQL not connected' });
     const posts = req.body;
     if (!Array.isArray(posts)) return res.status(400).json({ success: false, error: 'expected array' });
+    if (posts.length > 500) return res.status(400).json({ success: false, error: 'too many posts (max 500)' });
 
     let saved = 0;
-    for (const post of posts) {
-      const id = post.id || crypto.randomUUID();
-      const noteId = post.noteId || post.note_id || '';
+    for (const rawPost of posts) {
+      const post = sanitizePost(rawPost);
+      if (!post) continue;
+      const id = post.id;
+      const noteId = post.noteId;
       // 按 note_id 去重（小红书帖子），如果 note_id 为空则按 id 去重
       const [existing] = noteId
         ? await dbPool.query('SELECT id FROM posts WHERE note_id = ?', [noteId])
@@ -409,11 +429,11 @@ app.post('/api/posts', async (req, res) => {
           `UPDATE posts SET title=?, author=?, avatar=?, cover_url=?, category=?, category_name=?,
            date=?, source=?, likes=?, collects=?, tags=?, content=?, status=?, priority=?
            WHERE id=?`,
-          [post.title || '', post.author || '', post.avatar || '', post.coverUrl || '',
-           post.category || 'frontend', post.categoryName || '前端开发',
-           post.date || '', post.source || '', post.likes || 0, post.collects || 0,
-           JSON.stringify(post.tags || []), post.content || '',
-           post.status || 'unread', post.priority || 'medium', existing[0].id]
+          [post.title, post.author, post.avatar, post.coverUrl,
+           post.category, post.categoryName,
+           post.date, post.source, post.likes, post.collects,
+           JSON.stringify(post.tags), post.content,
+           post.status, post.priority, existing[0].id]
         );
         saved++;
       } else {
@@ -422,12 +442,12 @@ app.post('/api/posts', async (req, res) => {
           `INSERT INTO posts (id, title, author, avatar, cover_url, category, category_name,
            date, source, likes, collects, tags, content, note_id, xsec_token, status, priority)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, post.title || '', post.author || '', post.avatar || '', post.coverUrl || '',
-           post.category || 'frontend', post.categoryName || '前端开发',
-           post.date || '', post.source || '', post.likes || 0, post.collects || 0,
-           JSON.stringify(post.tags || []), post.content || '',
-           noteId, post.xsecToken || post.xsec_token || '',
-           post.status || 'unread', post.priority || 'medium']
+          [id, post.title, post.author, post.avatar, post.coverUrl,
+           post.category, post.categoryName,
+           post.date, post.source, post.likes, post.collects,
+           JSON.stringify(post.tags), post.content,
+           noteId, post.xsecToken,
+           post.status, post.priority]
         );
         saved++;
       }
@@ -444,7 +464,9 @@ app.post('/api/posts', async (req, res) => {
 app.delete('/api/posts/:id', async (req, res) => {
   try {
     if (!dbPool) return res.status(503).json({ success: false, error: 'MySQL not connected' });
-    await dbPool.query('DELETE FROM posts WHERE id = ?', [req.params.id]);
+    const id = sanitizeString(req.params.id, 64);
+    if (!id) return res.status(400).json({ success: false, error: 'invalid id' });
+    await dbPool.query('DELETE FROM posts WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -455,12 +477,16 @@ app.delete('/api/posts/:id', async (req, res) => {
 app.put('/api/posts/:id', async (req, res) => {
   try {
     if (!dbPool) return res.status(503).json({ success: false, error: 'MySQL not connected' });
+    const id = sanitizeString(req.params.id, 64);
+    if (!id) return res.status(400).json({ success: false, error: 'invalid id' });
     const { status, priority } = req.body;
     if (status !== undefined) {
-      await dbPool.query('UPDATE posts SET status = ? WHERE id = ?', [status, req.params.id]);
+      if (!VALID_STATUSES.includes(status)) return res.status(400).json({ success: false, error: 'invalid status' });
+      await dbPool.query('UPDATE posts SET status = ? WHERE id = ?', [status, id]);
     }
     if (priority !== undefined) {
-      await dbPool.query('UPDATE posts SET priority = ? WHERE id = ?', [priority, req.params.id]);
+      if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ success: false, error: 'invalid priority' });
+      await dbPool.query('UPDATE posts SET priority = ? WHERE id = ?', [priority, id]);
     }
     res.json({ success: true });
   } catch (e) {
@@ -514,7 +540,7 @@ app.get('/api/mcp/login/check', async (req, res) => {
 
 app.get('/api/mcp/search', async (req, res) => {
   try {
-    const { keyword } = req.query;
+    const keyword = sanitizeString(req.query.keyword || '', 200);
     if (!keyword) return res.status(400).json({ success: false, error: 'keyword required' });
 
     // 每次搜索前强制重新初始化 MCP 会话（避免旧会话超时）
@@ -547,9 +573,9 @@ app.get('/api/mcp/search', async (req, res) => {
 
 app.get('/api/mcp/feed/:feedId', async (req, res) => {
   try {
-    const { feedId } = req.params;
-    const { xsec_token } = req.query;
-    if (!xsec_token) return res.status(400).json({ success: false, error: 'xsec_token required' });
+    const feedId = sanitizeString(req.params.feedId, 64);
+    const xsec_token = sanitizeString(req.query.xsec_token || '', 200);
+    if (!feedId || !xsec_token) return res.status(400).json({ success: false, error: 'feedId and xsec_token required' });
     const r = await callMcp('get_feed_detail', { feed_id: feedId, xsec_token });
     res.json({ success: true, data: parseContent(r?.content) });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
@@ -558,8 +584,9 @@ app.get('/api/mcp/feed/:feedId', async (req, res) => {
 // 批量获取帖子详情（带限流 + OCR）
 app.post('/api/mcp/feed/batch', async (req, res) => {
   try {
-    const { feeds, ocr = true } = req.body; // [{id, xsecToken}, ...]
+    const { feeds, ocr = true } = req.body;
     if (!feeds || !Array.isArray(feeds)) return res.status(400).json({ success: false, error: 'invalid feeds' });
+    if (feeds.length > 20) return res.status(400).json({ success: false, error: 'too many feeds (max 20)' });
 
     const results = [];
     const limit = Math.min(feeds.length, 10); // 最多获取前10篇详情，避免太慢
@@ -608,14 +635,14 @@ app.post('/api/mcp/feed/batch', async (req, res) => {
         results.push({
           ...feed,
           detail: detail,
-          content: content,
+          content: content || '（此帖子为纯图片内容，OCR 未能识别出文字，建议在小红书 App 内查看原文）',
           time: note?.time || detail?.time || feed.time,
         });
         // 限流：每次请求间隔 2 秒，避免被小红书封
         if (i < limit - 1) await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (e) {
         console.log(`  Detail fetch failed for ${feed.id}: ${e.message}`);
-        results.push({ ...feed, detail: null, content: '' });
+        results.push({ ...feed, detail: null, content: '（帖子详情获取失败，可能是反爬限制，建议稍后重试）' });
       }
     }
 
@@ -634,6 +661,7 @@ app.get('/api/mcp/feeds', async (req, res) => {
 app.post('/api/crawl/convert', (req, res) => {
   const { results, category, keyword } = req.body;
   if (!results || !Array.isArray(results)) return res.status(400).json({ success: false, error: 'invalid results' });
+  if (results.length > 200) return res.status(400).json({ success: false, error: 'too many results (max 200)' });
 
   const kw = {
     frontend: ['前端', 'fe', 'react', 'vue', 'javascript', 'css', 'html', 'web'],

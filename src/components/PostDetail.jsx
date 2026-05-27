@@ -1,32 +1,57 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { CATEGORY_COLORS } from '../constants';
 import './PostDetail.css';
 
 export default function PostDetail({ post, onClose }) {
   const [activeTab, setActiveTab] = useState('content');
+  const saveTimer = useRef(null);
+
+  const debouncedSave = useCallback((key, value) => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      localStorage.setItem(key, value);
+    }, 500);
+  }, []);
 
   if (!post) return null;
 
+  const escapeHtml = (str) => {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  };
+
   // 将markdown内容渲染为HTML
   const renderContent = (text) => {
+    if (!text) return null;
     return text.split('\n').map((line, i) => {
       // 标题
       if (line.startsWith('### ')) {
-        return <h3 key={i} className="md-h3">{line.replace('### ', '')}</h3>;
+        return <h3 key={i} className="md-h3">{escapeHtml(line.replace('### ', ''))}</h3>;
       }
       if (line.startsWith('## ')) {
-        return <h2 key={i} className="md-h2">{line.replace('## ', '')}</h2>;
+        return <h2 key={i} className="md-h2">{escapeHtml(line.replace('## ', ''))}</h2>;
       }
       // 列表项
       if (line.startsWith('- ')) {
-        return <li key={i} className="md-li">{line.replace('- ', '')}</li>;
+        return <li key={i} className="md-li">{escapeHtml(line.replace('- ', ''))}</li>;
       }
       // 空行
       if (line.trim() === '') {
         return <br key={i} />;
       }
-      // 普通段落
-      return <p key={i} className="md-p">{line.replace(/\*\*/g, '')}</p>;
+      // 普通段落 - 保留 **加粗** 语法
+      const parts = line.split(/(\*\*[^*]+\*\*)/g);
+      return (
+        <p key={i} className="md-p">
+          {parts.map((part, j) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return <strong key={j}>{escapeHtml(part.slice(2, -2))}</strong>;
+            }
+            return escapeHtml(part);
+          })}
+        </p>
+      );
     });
   };
 
@@ -91,7 +116,7 @@ export default function PostDetail({ post, onClose }) {
                 className="notes-textarea"
                 placeholder="在这里记录你的学习笔记..."
                 defaultValue={localStorage.getItem(`notes_${post.id}`) || ''}
-                onChange={(e) => localStorage.setItem(`notes_${post.id}`, e.target.value)}
+                onChange={(e) => debouncedSave(`notes_${post.id}`, e.target.value)}
               />
               <p className="notes-hint">💡 笔记会自动保存在本地浏览器中</p>
             </div>

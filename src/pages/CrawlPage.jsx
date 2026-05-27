@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import PostDetail from '../components/PostDetail';
 import { CATEGORY_BG_COLORS, CATEGORY_COLORS } from '../constants';
 import { Globe, Search, RefreshCw, CheckCircle, AlertCircle, Loader, Wifi, WifiOff, Link, ExternalLink } from 'lucide-react';
 import './CrawlPage.css';
@@ -38,6 +39,8 @@ export default function CrawlPage() {
   const [crawlLog, setCrawlLog] = useState([]);
   const [crawlResults, setCrawlResults] = useState([]);
   const [sortBy, setSortBy] = useState('综合');
+  const [previewPost, setPreviewPost] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const addLog = (message, type = 'info') => {
     setCrawlLog(prev => [...prev, { time: new Date().toLocaleTimeString(), message, type }]);
@@ -45,13 +48,15 @@ export default function CrawlPage() {
 
   // 检查 MCP 服务状态
   useEffect(() => {
-    checkMcpStatus();
+    const controller = new AbortController();
+    checkMcpStatus(controller.signal);
+    return () => controller.abort();
   }, []);
 
-  const checkMcpStatus = async () => {
+  const checkMcpStatus = async (signal) => {
     setMcpStatus('checking');
     try {
-      const res = await fetch(`${API_BASE}/mcp/status`);
+      const res = await fetch(`${API_BASE}/mcp/status`, { signal });
       const data = await res.json();
       if (data.connected) {
         setMcpStatus('connected');
@@ -61,7 +66,8 @@ export default function CrawlPage() {
         setMcpStatus('disconnected');
         addLog(`❌ MCP 服务未连接: ${data.error || '未知错误'}`, 'error');
       }
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError') return;
       setMcpStatus('disconnected');
       addLog('❌ 无法连接到后端服务，请确保已启动: node server/index.js', 'error');
     }
@@ -124,12 +130,13 @@ export default function CrawlPage() {
     // 转换数据格式
     if (allResults.length > 0) {
       // 先获取帖子详情（面试内容）
-      addLog(`📖 正在获取 ${Math.min(allResults.length, 10)} 篇帖子详情（含图片OCR识别，每篇约10秒）...`, 'info');
+      const batchLimit = Math.min(allResults.length, 10);
+      addLog(`📖 正在获取 ${batchLimit} 篇帖子详情（含图片OCR识别，每篇约10秒）...`, 'info');
       try {
         const batchRes = await fetch(`${API_BASE}/mcp/feed/batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ feeds: allResults })
+          body: JSON.stringify({ feeds: allResults.slice(0, batchLimit) })
         });
         const batchData = await batchRes.json();
         if (batchData.success && batchData.data.length > 0) {
@@ -162,7 +169,7 @@ export default function CrawlPage() {
       }
     }
 
-    addLog(`📊 抓取完成！共获取 ${allResults.length} 条原始数据`, 'success');
+    addLog(`📊 抓取完成！共获取 ${allResults.length} 条面经`, 'success');
     setIsCrawling(false);
   };
 
@@ -247,11 +254,21 @@ export default function CrawlPage() {
     }
   };
 
-  const handleSaveResults = () => {
-    if (crawlResults.length > 0) {
-      addPosts(crawlResults);
-      addLog(`💾 已保存 ${crawlResults.length} 条面经到数据库`, 'success');
-      setCrawlResults([]);
+  const handleSaveResults = async () => {
+    if (crawlResults.length === 0) return;
+    setIsSaving(true);
+    try {
+      const res = await addPosts(crawlResults);
+      if (res && res.success) {
+        addLog(`💾 已保存 ${crawlResults.length} 条面经到数据库`, 'success');
+        setCrawlResults([]);
+      } else {
+        addLog(`❌ 保存失败: ${res?.error || '未知错误'}，请检查 MySQL 连接后重试`, 'error');
+      }
+    } catch (err) {
+      addLog(`❌ 保存失败: ${err.message}，请检查后端服务和 MySQL 连接`, 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -275,7 +292,7 @@ export default function CrawlPage() {
             <span className={`status-badge ${mcpStatus}`}>
               {mcpStatus === 'checking' ? '检测中...' : mcpStatus === 'connected' ? '已连接' : '未连接'}
             </span>
-            <button className="refresh-btn" onClick={checkMcpStatus}>
+            <button className="refresh-btn" onClick={() => checkMcpStatus()}>
               <RefreshCw size={14} />
               重新检测
             </button>
@@ -412,9 +429,12 @@ export default function CrawlPage() {
         </button>
 
         {crawlResults.length > 0 && (
-          <button className="save-btn" onClick={handleSaveResults}>
-            <CheckCircle size={18} />
-            保存结果 ({crawlResults.length} 条)
+          <button className="save-btn" onClick={handleSaveResults} disabled={isSaving}>
+            {isSaving ? (
+              <><Loader size={18} className="spin" /> 保存中...</>
+            ) : (
+              <><CheckCircle size={18} /> 保存结果 ({crawlResults.length} 条)</>
+            )}
           </button>
         )}
       </div>
@@ -451,7 +471,7 @@ export default function CrawlPage() {
           </h3>
           <div className="results-preview">
             {crawlResults.map(post => (
-              <div key={post.id} className="result-item">
+              <div key={post.id} className="result-item" onClick={() => setPreviewPost(post)} style={{ cursor: 'pointer' }}>
                 <span className="result-category" style={{
                   background: CATEGORY_BG_COLORS[post.category],
                   color: CATEGORY_COLORS[post.category]
@@ -476,6 +496,10 @@ export default function CrawlPage() {
           所有数据仅用于个人学习参考。
         </p>
       </div>
+
+      {previewPost && (
+        <PostDetail post={previewPost} onClose={() => setPreviewPost(null)} />
+      )}
     </div>
   );
 }

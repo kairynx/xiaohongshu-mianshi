@@ -65,7 +65,7 @@ export default function PostCard({ post, onSelect }) {
       <div className="card-body" onClick={() => onSelect(post)}>
         <h3 className="card-title">{post.title}</h3>
         <p className="card-preview">
-          {post.content.replace(/#{1,6}\s/g, '').replace(/\*\*/g, '').substring(0, 120)}...
+          {(post.content || '').replace(/#{1,6}\s/g, '').replace(/\*\*/g, '').substring(0, 120)}...
         </p>
       </div>
 

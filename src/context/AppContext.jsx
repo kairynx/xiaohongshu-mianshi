@@ -114,18 +114,15 @@ function appReducer(state, action) {
       };
     }
     case 'TOGGLE_STATUS': {
+      const { id, newStatus } = action.payload;
       const updatedPosts = state.posts.map(p =>
-        p.id === action.payload
-          ? { ...p, status: p.status === 'read' ? 'unread' : 'read' }
-          : p
+        p.id === id ? { ...p, status: newStatus } : p
       );
       return {
         ...state,
         posts: updatedPosts,
         filteredPosts: state.filteredPosts.map(p =>
-          p.id === action.payload
-            ? { ...p, status: p.status === 'read' ? 'unread' : 'read' }
-            : p
+          p.id === id ? { ...p, status: newStatus } : p
         ),
         dashboardStats: computeStats(updatedPosts)
       };
@@ -222,8 +219,7 @@ export function AppProvider({ children }) {
     const post = state.posts.find(p => p.id === id);
     if (!post) return;
     const newStatus = post.status === 'read' ? 'unread' : 'read';
-    dispatch({ type: 'TOGGLE_STATUS', payload: id });
-    // 同步到数据库
+    dispatch({ type: 'TOGGLE_STATUS', payload: { id, newStatus } });
     fetch(`${API_BASE}/posts/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -250,12 +246,17 @@ export function AppProvider({ children }) {
 
   const addPosts = useCallback((posts) => {
     dispatch({ type: 'ADD_POSTS', payload: posts });
-    // 保存到数据库
-    fetch(`${API_BASE}/posts`, {
+    return fetch(`${API_BASE}/posts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(posts)
-    }).catch(() => dispatch({ type: 'SET_ERROR', payload: '保存到数据库失败' }));
+    }).then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }).catch(err => {
+      dispatch({ type: 'SET_ERROR', payload: '保存到数据库失败' });
+      throw err;
+    });
   }, []);
 
   const value = {

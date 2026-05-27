@@ -2,7 +2,7 @@ import { useApp } from '../context/AppContext';
 import { CATEGORY_COLORS, CATEGORY_NAMES_LIST, CATEGORY_KEYS } from '../constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
+  PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts';
 import { BookOpen, TrendingUp, Eye, Star, Target, Zap } from 'lucide-react';
 import './DashboardPage.css';

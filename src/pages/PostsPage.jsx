@@ -6,7 +6,7 @@ import { Search, Filter, SortAsc, SortDesc } from 'lucide-react';
 import './PostsPage.css';
 
 export default function PostsPage() {
-  const { filteredPosts, categories, selectedCategory, setCategory, setSearch, searchQuery } = useApp();
+  const { posts, filteredPosts, categories, selectedCategory, setCategory, setSearch, searchQuery } = useApp();
   const [selectedPost, setSelectedPost] = useState(null);
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -86,8 +86,8 @@ export default function PostsPage() {
             {cat.icon} {cat.label}
             <span className="tab-count">
               {cat.key === 'all'
-                ? filteredPosts.length
-                : filteredPosts.filter(p => p.category === cat.key).length}
+                ? posts.length
+                : posts.filter(p => p.category === cat.key).length}
             </span>
           </button>
         ))}

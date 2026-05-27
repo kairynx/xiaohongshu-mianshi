@@ -7,7 +7,7 @@ USE mianshi_app;
 
 -- 帖子表
 CREATE TABLE IF NOT EXISTS posts (
-  id BIGINT PRIMARY KEY,
+  id VARCHAR(64) PRIMARY KEY,
   title VARCHAR(500) NOT NULL COMMENT '标题',
   author VARCHAR(200) DEFAULT '' COMMENT '作者',
   avatar VARCHAR(1000) DEFAULT '' COMMENT '头像URL',
