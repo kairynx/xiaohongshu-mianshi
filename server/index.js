@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, execSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
@@ -201,30 +201,54 @@ function parseContent(c) {
  * 下载图片并保存到临时文件
  */
 async function downloadImage(url) {
-  const response = await fetchWithTimeout(url, {}, 30000);
+  const response = await fetchWithTimeout(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Referer': 'https://www.xiaohongshu.com/',
+      'Accept': 'image/avif,image/webp,image/*,*/*'
+    }
+  }, 30000);
   if (!response.ok) throw new Error('图片下载失败: ' + response.status);
   const buffer = Buffer.from(await response.arrayBuffer());
   const tmpFile = path.join(os.tmpdir(), 'ocr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
   fs.writeFileSync(tmpFile, buffer);
+  console.log(`    Downloaded ${(buffer.length / 1024).toFixed(0)}KB image`);
   return tmpFile;
+}
+
+// 检测可用的 ImageMagick 命令（Windows 用 magick，Linux/Mac 可能用 convert）
+let imagemagickCmd = null;
+try {
+  execSync('magick --version', { stdio: 'ignore' });
+  imagemagickCmd = 'magick';
+  console.log('  ImageMagick: using "magick" command');
+} catch {
+  try {
+    execSync('convert --version', { stdio: 'ignore' });
+    imagemagickCmd = 'convert';
+    console.log('  ImageMagick: using "convert" command');
+  } catch {
+    console.log('  ⚠️ ImageMagick not found, OCR preprocessing disabled');
+  }
 }
 
 /**
  * 图片预处理：转 PNG + 放大 + 灰度 + 增强对比度 + 去噪
- * 使用 ImageMagick (convert 命令)
+ * 使用 ImageMagick
  * @param {string} inputPath - 原始图片路径
  * @returns {string} 预处理后的图片路径
  */
 async function preprocessImage(inputPath) {
+  if (!imagemagickCmd) return inputPath;
   const outputPath = inputPath + '_processed.png';
   try {
     await new Promise((resolve, reject) => {
-      execFile('convert', [
+      execFile(imagemagickCmd, [
         inputPath,
-        '-colorspace', 'Gray',         // 转灰度，去除彩色噪点
-        '-normalize',                   // 直方图归一化，增强对比度（比 contrast-stretch 更温和）
-        '-resize', '2000x>',           // 放大到 2000px 宽
-        '-unsharp', '1.5x1+0.7+0.02', // 更激进的锐化，让文字边缘更清晰
+        '-colorspace', 'Gray',
+        '-normalize',
+        '-resize', '2000x>',
+        '-unsharp', '1.5x1+0.7+0.02',
         'PNG:' + outputPath
       ], { timeout: 30000 }, (err) => {
         if (err) reject(err);
@@ -310,12 +334,17 @@ async function ocrImageUrl(url) {
   let tmpFile = null;
   try {
     tmpFile = await downloadImage(url);
+    console.log(`    Downloaded to ${tmpFile}`);
     // 图片预处理
     tmpFile = await preprocessImage(tmpFile);
+    console.log(`    Preprocessed to ${tmpFile}`);
     // OCR 识别
     const rawText = await ocrImage(tmpFile);
+    console.log(`    OCR result: ${rawText ? rawText.length + ' chars' : 'empty'}`);
     // 后处理
-    return cleanOcrText(rawText);
+    const cleaned = cleanOcrText(rawText);
+    console.log(`    After cleaning: ${cleaned ? cleaned.length + ' chars' : 'empty'}`);
+    return cleaned;
   } catch (e) {
     console.log('    OCR failed for image:', e.message);
     return '';
@@ -611,7 +640,19 @@ app.post('/api/mcp/feed/batch', async (req, res) => {
 
     for (let i = 0; i < limit; i++) {
       const feed = feeds[i];
-      if (!feed.id || !feed.xsecToken) continue;
+      if (!feed.id) continue;
+
+      // 没有 xsecToken 的 feed 无法获取详情，直接用搜索数据
+      if (!feed.xsecToken) {
+        console.log(`  Skipping detail for ${feed.id}: no xsecToken, using search data`);
+        results.push({
+          ...feed,
+          detail: null,
+          content: feed.title || '',
+          time: feed.time || new Date().toISOString().slice(0, 10),
+        });
+        continue;
+      }
 
       let detail = null;
       let fetchError = null;
