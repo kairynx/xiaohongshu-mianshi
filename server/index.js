@@ -139,19 +139,38 @@ async function mcpNotify(method, params = {}) {
 }
 
 // 通过 GET 请求建立 SSE 连接并获取 session ID
+// 使用 http.request 精确控制，避免 fetch API 可能存在的 header 处理差异
 async function establishSseSession() {
   return new Promise((resolve) => {
-    const httpMod = MCP_URL.startsWith('https') ? require('https') : require('http');
-    const req = httpMod.get(MCP_URL, {
+    const url = new URL(MCP_URL);
+    const httpMod = url.protocol === 'https:' ? require('https') : require('http');
+    const req = httpMod.request({
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + url.search,
+      method: 'GET',
       headers: { 'Accept': 'text/event-stream' },
       timeout: 10000
     }, (res) => {
-      const sid = res.headers['mcp-session-id'];
-      res.destroy();  // 不需要 SSE 消息体，只需要 session ID
-      resolve(sid || '');
+      console.log(`  SSE GET → ${res.statusCode} ${res.statusMessage}`);
+      // Node http 模块会将 header 名转为小写
+      const sid = res.headers['mcp-session-id'] || '';
+      // 消费并丢弃响应体
+      res.on('data', () => {});
+      res.on('end', () => resolve(sid));
+      // SSE 流不会主动 end，手动 1 秒后结束
+      setTimeout(() => { res.destroy(); resolve(sid); }, 1000);
     });
-    req.on('error', () => resolve(''));
-    req.on('timeout', () => { req.destroy(); resolve(''); });
+    req.on('error', (e) => {
+      console.log('  SSE GET error: ' + e.message);
+      resolve('');
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      console.log('  SSE GET timeout');
+      resolve('');
+    });
+    req.end();
   });
 }
 
@@ -161,14 +180,18 @@ async function ensureMcpInit() {
 
   // Step 1: GET 建立 SSE 连接获取 session ID
   if (!mcpSessionId) {
+    console.log('  Establishing SSE session to ' + MCP_URL + ' ...');
     const sid = await establishSseSession();
     if (sid) {
       mcpSessionId = sid;
       console.log('  SSE session: ' + sid);
+    } else {
+      console.log('  SSE session: none (will try POST-only)');
     }
   }
 
   // Step 2: 发送 initialize 请求
+  console.log('  Sending MCP initialize...');
   const result = await mcpRequest('initialize', {
     protocolVersion: '2024-11-05',
     capabilities: {},
