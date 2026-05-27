@@ -72,6 +72,13 @@ function rowToPost(row) {
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+// 请求日志：打印所有 /api 请求
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    console.log(`→ ${req.method} ${req.path}`);
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, '../dist')));
 
 let mcpSessionId = null;
