@@ -158,18 +158,15 @@ function resetSession() {
   console.log('  MCP session reset');
 }
 
-// 调用 MCP 工具（自动初始化 + 仅对非超时错误重试）
+// 调用 MCP 工具（自动初始化 + 失败重试一次，含会话重置）
 async function callMcp(name, args = {}) {
   await ensureMcpInit();
   try {
     return await mcpRequest('tools/call', { name, arguments: args });
   } catch (e) {
-    // 超时不重试（重试只会更慢）
-    if (e.name === 'AbortError' || e.message?.includes('aborted')) {
-      throw new Error('MCP 请求超时（超过300秒），请减少搜索关键词或稍后重试');
-    }
-    // 其他错误（如会话过期）重试一次
-    console.log('  MCP call failed (' + e.message + '), resetting session and retrying...');
+    // 所有错误（含超时）都重试一次，因为超时很可能是会话过期导致的
+    const reason = e.name === 'AbortError' || e.message?.includes('aborted') ? 'timeout' : e.message;
+    console.log(`  MCP call failed (${reason}), resetting session and retrying...`);
     resetSession();
     await ensureMcpInit();
     return await mcpRequest('tools/call', { name, arguments: args });
@@ -224,9 +221,10 @@ async function preprocessImage(inputPath) {
     await new Promise((resolve, reject) => {
       execFile('convert', [
         inputPath,
-        '-resize', '2000x>',
-        '-contrast-stretch', '3%x10%',
-        '-unsharp', '1x1+0.5+0',
+        '-colorspace', 'Gray',         // 转灰度，去除彩色噪点
+        '-normalize',                   // 直方图归一化，增强对比度（比 contrast-stretch 更温和）
+        '-resize', '2000x>',           // 放大到 2000px 宽
+        '-unsharp', '1.5x1+0.7+0.02', // 更激进的锐化，让文字边缘更清晰
         'PNG:' + outputPath
       ], { timeout: 30000 }, (err) => {
         if (err) reject(err);
@@ -248,22 +246,38 @@ async function preprocessImage(inputPath) {
  */
 function ocrImage(imagePath) {
   return new Promise((resolve) => {
-    execFile('tesseract', [
-      imagePath, 'stdout',
-      '-l', 'chi_sim+eng',
-      '--psm', '6',
-      '--oem', '1',
-      '-c', 'preserve_interword_spaces=1',
-      '--dpi', '300'
-    ], {
-      timeout: 30000,
-      maxBuffer: 10 * 1024 * 1024
-    }, (error, stdout) => {
-      try { fs.unlinkSync(imagePath); } catch {}
-      if (error) { resolve(''); return; }
-      const text = (stdout || '').trim();
-      resolve(text.length > 10 ? text : '');
+    const runOcr = (psm) => new Promise((res) => {
+      execFile('tesseract', [
+        imagePath, 'stdout',
+        '-l', 'chi_sim+eng',
+        '--psm', String(psm),
+        '--oem', '1',
+        '-c', 'preserve_interword_spaces=1'
+      ], { timeout: 45000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
+        if (error) { res(''); return; }
+        res((stdout || '').trim());
+      });
     });
+
+    // 判断 OCR 结果是否有效（有足够的中文内容，不是乱码）
+    const isValid = (text) => {
+      if (!text || text.length < 10) return false;
+      const chinese = (text.match(/[一-鿿]/g) || []).length;
+      const garbage = (text.match(/[^a-zA-Z0-9一-鿿　-〿＀-￯\s,.;:!?，。；：！？、（）【】《》""''\-—…·\n]/g) || []).length;
+      return chinese >= 2 && garbage / text.length < 0.5;
+    };
+
+    (async () => {
+      let text = await runOcr(6);  // PSM 6: 块文本，适合截图
+      if (!isValid(text)) {
+        console.log('    PSM 6 结果不佳，尝试 PSM 3（全自动）...');
+        const text3 = await runOcr(3);  // PSM 3: 全自动页面分割
+        if (isValid(text3)) text = text3;
+        else if (text3.length > text.length) text = text3;  // 退而求其次，用更长的那个
+      }
+      try { fs.unlinkSync(imagePath); } catch {}
+      resolve(isValid(text) ? text : (text.length > 10 ? text : ''));
+    })();
   });
 }
 
@@ -581,7 +595,7 @@ app.get('/api/mcp/feed/:feedId', async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-// 批量获取帖子详情（带限流 + OCR）
+// 批量获取帖子详情（带限流 + OCR + 会话恢复）
 app.post('/api/mcp/feed/batch', async (req, res) => {
   try {
     const { feeds, ocr = true } = req.body;
@@ -589,61 +603,85 @@ app.post('/api/mcp/feed/batch', async (req, res) => {
     if (feeds.length > 20) return res.status(400).json({ success: false, error: 'too many feeds (max 20)' });
 
     const results = [];
-    const limit = Math.min(feeds.length, 10); // 最多获取前10篇详情，避免太慢
+    const limit = Math.min(feeds.length, 10);
+
+    // 强制新建会话，避免旧会话超时导致整批失败
+    resetSession();
+    console.log(`  Batch: fresh session for ${limit} feeds`);
 
     for (let i = 0; i < limit; i++) {
       const feed = feeds[i];
       if (!feed.id || !feed.xsecToken) continue;
-      try {
-        console.log(`  Fetching detail ${i + 1}/${limit}: ${feed.id}`);
-        const r = await callMcp('get_feed_detail', { feed_id: feed.id, xsec_token: feed.xsecToken });
-        const detail = parseContent(r?.content);
 
-        // 提取文字描述（MCP 返回可能是 { data: { note: { desc } } } 或 { note: { desc } }）
-        const note = detail?.data?.note || detail?.note || detail;
-        const noteType = note?.type || '';
-        let content = note?.desc || note?.description || note?.title || detail?.desc || detail?.title || '';
-        const imageCount = note?.imageList?.length || note?.image_list?.length || 0;
-        const hasVideo = !!(note?.video || detail?.data?.video);
+      let detail = null;
+      let fetchError = null;
 
-        // 诊断：当 note 存在但内容为空时，打印详细结构
-        if (note && !content && imageCount === 0 && !hasVideo) {
-          console.log(`    ⚠️ note 存在但内容为空！note keys: ${JSON.stringify(Object.keys(note))}`);
-          if (detail?.data) console.log(`    detail.data keys: ${JSON.stringify(Object.keys(detail.data))}`);
-          if (Array.isArray(detail)) console.log(`    detail 是数组！长度: ${detail.length}`);
-          console.log(`    note.type: "${noteType}", note.title: "${(note?.title || '').slice(0, 30)}"`);
-          // 尝试从其他字段提取
-          if (note.desc) { content = note.desc; console.log(`    → 从 note.desc 提取到内容`); }
-          if (note.description) { content = note.description; console.log(`    → 从 note.description 提取到内容`); }
-          if (note.title) { content = note.title; console.log(`    → 从 note.title 提取到内容`); }
-        }
-
-        console.log(`    note: ${!!note}, type: ${noteType}, desc: ${content ? content.slice(0, 30) + '...' : '空'}, images: ${imageCount}, video: ${hasVideo}`);
-
-        // 视频类帖子没有图片，跳过 OCR
-        if (noteType === 'video' || hasVideo) {
-          console.log(`    ⏭️ 视频帖子，跳过 OCR`);
-          content = content || '（此帖子为视频类型，暂不支持视频内容提取）';
-        } else if (ocr) {
-          console.log(`    Running OCR on images...`);
-          const ocrText = await ocrFeedDetail(detail);
-          if (ocrText) {
-            content = content ? content + '\n\n--- 图片内容 ---\n' + ocrText : ocrText;
+      // 每个 feed 最多尝试 2 次（首次 + 1 次重试，含会话重置）
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          console.log(`  Fetching detail ${i + 1}/${limit}: ${feed.id}${attempt > 0 ? ' (retry)' : ''}`);
+          const r = await callMcp('get_feed_detail', { feed_id: feed.id, xsec_token: feed.xsecToken });
+          detail = parseContent(r?.content);
+          fetchError = null;
+          break;
+        } catch (e) {
+          fetchError = e;
+          if (attempt === 0) {
+            console.log(`    Feed ${feed.id} attempt 1 failed: ${e.message}, resetting session...`);
+            resetSession();
           }
         }
-
-        results.push({
-          ...feed,
-          detail: detail,
-          content: content || '（此帖子为纯图片内容，OCR 未能识别出文字，建议在小红书 App 内查看原文）',
-          time: note?.time || detail?.time || feed.time,
-        });
-        // 限流：每次请求间隔 2 秒，避免被小红书封
-        if (i < limit - 1) await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (e) {
-        console.log(`  Detail fetch failed for ${feed.id}: ${e.message}`);
-        results.push({ ...feed, detail: null, content: '（帖子详情获取失败，可能是反爬限制，建议稍后重试）' });
       }
+
+      if (fetchError || !detail) {
+        console.log(`  Detail fetch failed for ${feed.id}: ${fetchError?.message || 'empty response'}`);
+        results.push({ ...feed, detail: null, content: '（帖子详情获取失败，可能是反爬限制，建议稍后重试）' });
+        // 失败后也做会话重置，避免下一个 feed 受影响
+        resetSession();
+        continue;
+      }
+
+      // 提取文字描述
+      const note = detail?.data?.note || detail?.note || detail;
+      const noteType = note?.type || '';
+      let content = note?.desc || note?.description || note?.title || detail?.desc || detail?.title || '';
+      const imageCount = note?.imageList?.length || note?.image_list?.length || 0;
+      const hasVideo = !!(note?.video || detail?.data?.video);
+
+      // 诊断：当 note 存在但内容为空时，打印详细结构
+      if (note && !content && imageCount === 0 && !hasVideo) {
+        console.log(`    ⚠️ note 存在但内容为空！note keys: ${JSON.stringify(Object.keys(note))}`);
+        if (detail?.data) console.log(`    detail.data keys: ${JSON.stringify(Object.keys(detail.data))}`);
+        if (Array.isArray(detail)) console.log(`    detail 是数组！长度: ${detail.length}`);
+        console.log(`    note.type: "${noteType}", note.title: "${(note?.title || '').slice(0, 30)}"`);
+        if (note.desc) { content = note.desc; console.log(`    → 从 note.desc 提取到内容`); }
+        if (note.description) { content = note.description; console.log(`    → 从 note.description 提取到内容`); }
+        if (note.title) { content = note.title; console.log(`    → 从 note.title 提取到内容`); }
+      }
+
+      console.log(`    note: ${!!note}, type: ${noteType}, desc: ${content ? content.slice(0, 30) + '...' : '空'}, images: ${imageCount}, video: ${hasVideo}`);
+
+      // 视频类帖子没有图片，跳过 OCR
+      if (noteType === 'video' || hasVideo) {
+        console.log(`    ⏭️ 视频帖子，跳过 OCR`);
+        content = content || '（此帖子为视频类型，暂不支持视频内容提取）';
+      } else if (ocr) {
+        console.log(`    Running OCR on images...`);
+        const ocrText = await ocrFeedDetail(detail);
+        if (ocrText) {
+          content = content ? content + '\n\n--- 图片内容 ---\n' + ocrText : ocrText;
+        }
+      }
+
+      results.push({
+        ...feed,
+        detail: detail,
+        content: content || '（此帖子为纯图片内容，OCR 未能识别出文字，建议在小红书 App 内查看原文）',
+        time: note?.time || detail?.time || feed.time,
+      });
+
+      // 限流：每次请求间隔 2 秒，避免被小红书封
+      if (i < limit - 1) await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     console.log(`  Batch detail done: ${results.length}/${limit}`);
