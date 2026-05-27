@@ -268,8 +268,17 @@ function ocrImage(imagePath) {
         '--oem', '1',
         '-c', 'preserve_interword_spaces=1'
       ], { timeout: 45000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
-        if (error) { res(''); return; }
-        res((stdout || '').trim());
+        if (error) {
+          if (error.code === 'ENOENT') {
+            console.log('    ⚠️ tesseract 命令不存在！请在 Windows 上安装 Tesseract OCR');
+          } else {
+            console.log('    Tesseract error (' + error.code + '): ' + error.message);
+          }
+          res('');
+          return;
+        }
+        const out = (stdout || '').trim();
+        res(out);
       });
     });
 
@@ -676,27 +685,17 @@ app.post('/api/mcp/feed/batch', async (req, res) => {
       const note = detail?.data?.note || detail?.note || detail;
       const noteType = note?.type || '';
 
-      // 判断是否为数组或类数组对象（keys 全是数字）
-      const isArray = Array.isArray(note);
-      const isArrayLike = !isArray && note && typeof note === 'object' &&
-        Object.keys(note).length > 0 &&
-        Object.keys(note).every(k => /^\d+$/.test(k));
+      let content = note?.desc || note?.description || note?.title || '';
 
-      let content = '';
-      if (isArray || isArrayLike) {
-        // MCP 返回了列表格式，从各元素中搜索有用内容
-        const values = isArray ? note : Object.values(note);
+      // 如果直接字段为空，尝试从子对象中提取（MCP 可能返回列表嵌套结构）
+      if (!content && note && typeof note === 'object') {
+        const values = Array.isArray(note) ? note : Object.values(note);
         for (const item of values) {
-          if (item && typeof item === 'object') {
-            content = item.desc || item.description || item.title || item.text || content;
+          if (item && typeof item === 'object' && !Array.isArray(item)) {
+            content = item.desc || item.description || item.title || item.text || '';
             if (content) break;
           }
         }
-        if (!content) {
-          content = values.filter(v => typeof v === 'string').join('\n');
-        }
-      } else {
-        content = note?.desc || note?.description || note?.title || '';
       }
       if (!content) {
         content = detail?.desc || detail?.title || '';
@@ -705,13 +704,14 @@ app.post('/api/mcp/feed/batch', async (req, res) => {
       const imageCount = note?.imageList?.length || note?.image_list?.length || 0;
       const hasVideo = !!(note?.video || detail?.data?.video);
 
-      // 诊断：内容仍为空时打印结构
-      if (!content && imageCount === 0 && !hasVideo) {
-        const keys = Object.keys(note || {});
-        console.log(`    ⚠️ content empty! keys: ${JSON.stringify(keys.slice(0, 5))}...(${keys.length}), isArray:${isArray}, isArrayLike:${isArrayLike}`);
-        if (isArrayLike && note) {
-          const firstVal = note[keys[0]];
-          console.log(`    note[0] type: ${typeof firstVal}, sample: ${JSON.stringify(firstVal).slice(0, 120)}`);
+      // 诊断
+      if (!content && imageCount === 0 && !hasVideo && note) {
+        const keys = Object.keys(note);
+        const numericKeys = keys.filter(k => /^\d+$/.test(k));
+        console.log(`    ⚠️ content empty! total keys:${keys.length}, numeric:${numericKeys.length}, named:${keys.filter(k => !/^\d+$/.test(k)).join(',')}`);
+        if (numericKeys.length > 0) {
+          const firstVal = note[numericKeys[0]];
+          console.log(`    note[0] type: ${typeof firstVal}, sample: ${JSON.stringify(firstVal).slice(0, 200)}`);
         }
       }
 
