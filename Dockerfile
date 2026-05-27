@@ -20,8 +20,8 @@ RUN rm -rf src node_modules/.vite
 # ============ 生产镜像 ============
 FROM node:20-alpine
 
-# 安装 Chromium + Tesseract OCR + 中文字体 + ImageMagick(图片预处理)
-RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont imagemagick \
+# 安装 Chromium + Tesseract OCR + 中文字体（图片预处理用 sharp，无需 ImageMagick）
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont \
     tesseract-ocr tesseract-ocr-data-chi_sim tesseract-ocr-data-eng \
     && rm -rf /var/cache/apk/*
 

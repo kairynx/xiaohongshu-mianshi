@@ -9,7 +9,7 @@
 | 前端 | React 19 + React Router + Recharts + Vite |
 | 后端 | Express 5 (Node.js) |
 | 数据库 | MySQL (mysql2) |
-| OCR | Tesseract + ImageMagick 预处理 |
+| OCR | Tesseract + sharp 预处理 |
 | 抓取 | xiaohongshu-mcp (MCP 协议浏览器自动化) |
 | 部署 | Docker Compose |
 
@@ -32,8 +32,8 @@
 ## OCR 管线
 
 ```
-原始图片 → 下载 → ImageMagick 预处理(放大2000px + 对比度拉伸 + 锐化)
-→ Tesseract OCR (chi_sim+eng, PSM 6→3→4 兜底)
+原始图片 → 下载 → sharp 预处理(灰度 + 归一化 + 放大2000px + 锐化)
+→ Tesseract OCR (chi_sim+eng, PSM 6→3 兜底)
 → 后处理清洗(过滤乱码行 + 合并空行) → 入库
 ```
 
