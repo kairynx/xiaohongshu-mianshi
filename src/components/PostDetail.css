@@ -53,6 +53,61 @@
   color: #94a3b8;
 }
 
+.star-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.star-btn:hover {
+  border-color: #fbbf24;
+  color: #f59e0b;
+  background: #fffbeb;
+}
+
+.star-btn.active {
+  color: #f59e0b;
+  border-color: #fcd34d;
+  background: #fff7ed;
+}
+
+.relevance-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.relevance-badge.high {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+
+.relevance-badge.medium {
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fed7aa;
+}
+
+.relevance-badge.low {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
 .close-btn {
   width: 36px;
   height: 36px;
@@ -164,6 +219,199 @@
 
 .modal-body {
   padding: 24px;
+}
+
+.meta-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.meta-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.meta-section-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.meta-kv-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 8px 0;
+}
+
+.meta-key {
+  min-width: 72px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.meta-value {
+  flex: 1;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.quality-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quality-bar,
+.score-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.quality-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6366f1, #22c55e);
+}
+
+.score-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.score-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 48px;
+  gap: 10px;
+  align-items: center;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #6366f1;
+}
+
+.score-value {
+  font-size: 12px;
+  color: #64748b;
+  text-align: right;
+}
+
+.meta-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topic-chip,
+.match-chip,
+.mismatch-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.2;
+  border: 1px solid transparent;
+}
+
+.topic-chip {
+  background: #eef2ff;
+  color: #4338ca;
+  border-color: #c7d2fe;
+}
+
+.match-chip {
+  background: #ecfccb;
+  color: #3f6212;
+  border-color: #d9f99d;
+}
+
+.mismatch-chip {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+
+.difficulty-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.difficulty-badge.easy {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.difficulty-badge.medium {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.difficulty-badge.hard {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.question-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.question-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.question-card-body {
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.classification-section {
+  background: #f8fafc;
+}
+
+.meta-summary,
+.meta-empty {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.meta-empty {
+  padding: 8px 0;
 }
 
 /* Markdown 渲染样式 */

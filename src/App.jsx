@@ -7,6 +7,10 @@ import HomePage from './pages/HomePage';
 import PostsPage from './pages/PostsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import DashboardPage from './pages/DashboardPage';
+import AgentPage from './pages/AgentPage';
+import NotesPage from './pages/NotesPage';
+import LearnPage from './pages/LearnPage';
+import MockPage from './pages/MockPage';
 import CrawlPage from './pages/CrawlPage';
 import './App.css';
 
@@ -29,6 +33,10 @@ function App() {
           <Route path="/posts" element={<PostsPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/agent" element={<AgentPage />} />
+          <Route path="/notes" element={<NotesPage />} />
+          <Route path="/learn" element={<LearnPage />} />
+          <Route path="/mock" element={<MockPage />} />
           <Route path="/crawl" element={<CrawlPage />} />
         </Routes>
       </main>

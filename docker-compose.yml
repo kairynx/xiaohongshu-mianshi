@@ -68,6 +68,11 @@ services:
       - DB_USER=root
       - DB_PASS=123456
       - DB_NAME=mianshi_app
+      # LLM 配置（从宿主 .env 读取，或直接设置）
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-60000}
       - TZ=Asia/Shanghai
     extra_hosts:
       - "host.docker.internal:host-gateway"

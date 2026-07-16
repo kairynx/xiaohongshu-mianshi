@@ -46,6 +46,60 @@
   margin-top: 2px;
 }
 
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-search-icon {
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.sidebar-search input {
+  flex: 1;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  outline: none;
+  min-width: 0;
+}
+
+.sidebar-search input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.sidebar-search input:focus {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.sidebar-search-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  padding: 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-search-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+}
+
+.sidebar-search-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .sidebar-nav {
   flex: 1;
   padding: 16px 12px;
