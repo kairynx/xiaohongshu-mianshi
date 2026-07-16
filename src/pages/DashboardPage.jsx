@@ -1,51 +1,42 @@
-import { useApp } from '../context/AppContext';
+﻿import { useApp } from '../context/AppContext';
 import { CATEGORY_COLORS, CATEGORY_NAMES_LIST, CATEGORY_KEYS } from '../constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
+  PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts';
-import { BookOpen, TrendingUp, Eye, Star, Target, Zap } from 'lucide-react';
+import { BookOpen, TrendingUp, Eye, Star, Target } from 'lucide-react';
 import './DashboardPage.css';
 
 export default function DashboardPage() {
   const { posts, dashboardStats } = useApp();
 
-  // 分类数据
   const categoryData = CATEGORY_KEYS.map((key, i) => ({
     name: CATEGORY_NAMES_LIST[i],
     value: dashboardStats.byCategory[key],
     color: CATEGORY_COLORS[key]
   }));
 
-  // 公司数据
   const companyData = Object.entries(dashboardStats.byCompany)
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
 
-  // 日期数据
   const dateData = Object.entries(dashboardStats.byDate)
-    .map(([date, count]) => ({
-      date: date.slice(5), // 只显示月-日
-      count
-    }))
+    .map(([date, count]) => ({ date: date.slice(5), count }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // 优先级数据
   const priorityData = [
-    { name: '高优先', value: posts.filter(p => p.priority === 'high').length },
-    { name: '中优先', value: posts.filter(p => p.priority === 'medium').length },
-    { name: '低优先', value: posts.filter(p => p.priority === 'low').length },
+    { name: '高优先级', value: posts.filter(p => p.priority === 'high' || p.starred === true).length },
+    { name: '中优先级', value: posts.filter(p => p.priority === 'medium').length },
+    { name: '低优先级', value: posts.filter(p => p.priority === 'low').length },
   ];
 
-  // 阅读进度
   const readProgress = dashboardStats.total > 0
     ? Math.round((dashboardStats.read / dashboardStats.total) * 100)
     : 0;
 
-  // 标签统计
   const tagStats = {};
   posts.forEach(post => {
-    post.tags.forEach(tag => {
+    (post.tags || []).forEach(tag => {
       tagStats[tag] = (tagStats[tag] || 0) + 1;
     });
   });
@@ -61,7 +52,6 @@ export default function DashboardPage() {
         <p className="page-desc">面经数据统计与管理进度</p>
       </div>
 
-      {/* 顶部统计卡片 */}
       <div className="stats-cards">
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: '#ede9fe' }}>
@@ -101,7 +91,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 阅读进度 */}
       <div className="progress-section">
         <div className="progress-header">
           <div className="progress-title">
@@ -111,10 +100,7 @@ export default function DashboardPage() {
           <span className="progress-percent">{readProgress}%</span>
         </div>
         <div className="progress-bar">
-          <div
-            className="progress-fill"
-            style={{ width: `${readProgress}%` }}
-          />
+          <div className="progress-fill" style={{ width: `${readProgress}%` }} />
         </div>
         <div className="progress-detail">
           <span>已阅读 {dashboardStats.read} 篇</span>
@@ -122,11 +108,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 图表区域 */}
       <div className="charts-grid">
-        {/* 分类分布饼图 */}
         <div className="chart-card">
-          <h3 className="chart-title">📁 分类分布</h3>
+          <h3 className="chart-title">📕 分类分布</h3>
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
@@ -142,15 +126,14 @@ export default function DashboardPage() {
                   <Cell key={index} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value, name) => [`${value} 篇`, name]} />
+              <Tooltip formatter={(value) => [`${value} 篇`, '数量']} />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
         </div>
 
-        {/* 公司分布柱状图 */}
         <div className="chart-card">
-          <h3 className="chart-title">🏢 公司分布</h3>
+          <h3 className="chart-title">🏚 公司分布</h3>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={companyData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -162,9 +145,8 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* 每日新增趋势 */}
         <div className="chart-card">
-          <h3 className="chart-title">📈 每日新增趋势</h3>
+          <h3 className="chart-title">📱 每日新增趋势</h3>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={dateData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -188,9 +170,8 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* 优先级分布 */}
         <div className="chart-card">
-          <h3 className="chart-title">⚡ 优先级分布</h3>
+          <h3 className="chart-title">⭐ 优先级分布</h3>
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
@@ -211,7 +192,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 热门标签 */}
       <div className="chart-card">
         <h3 className="chart-title">🏷️ 热门标签 TOP 10</h3>
         <div className="tags-cloud">
@@ -231,23 +211,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 分类详细数据 */}
       <div className="chart-card">
-        <h3 className="chart-title">📋 分类详细数据</h3>
+        <h3 className="chart-title">🔍 分类详细数据</h3>
         <div className="category-table">
           <div className="table-header">
             <span>分类</span>
             <span>总数</span>
             <span>已读</span>
             <span>未读</span>
-            <span>高优先</span>
+            <span>高优先级</span>
             <span>阅读率</span>
           </div>
           {CATEGORY_KEYS.map((key, i) => {
             const catPosts = posts.filter(p => p.category === key);
             const read = catPosts.filter(p => p.status === 'read').length;
             const unread = catPosts.length - read;
-            const high = catPosts.filter(p => p.priority === 'high').length;
+            const high = catPosts.filter(p => p.priority === 'high' || p.starred === true).length;
             const rate = catPosts.length > 0 ? Math.round((read / catPosts.length) * 100) : 0;
             return (
               <div key={key} className="table-row">

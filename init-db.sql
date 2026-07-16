@@ -7,7 +7,7 @@ USE mianshi_app;
 
 -- 帖子表
 CREATE TABLE IF NOT EXISTS posts (
-  id BIGINT PRIMARY KEY,
+  id VARCHAR(64) PRIMARY KEY,
   title VARCHAR(500) NOT NULL COMMENT '标题',
   author VARCHAR(200) DEFAULT '' COMMENT '作者',
   avatar VARCHAR(1000) DEFAULT '' COMMENT '头像URL',
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS posts (
   collects INT DEFAULT 0 COMMENT '收藏数',
   tags JSON DEFAULT NULL COMMENT '标签',
   content LONGTEXT COMMENT '内容(含OCR)',
-  note_id VARCHAR(100) DEFAULT '' COMMENT '小红书帖子ID',
+  note_id VARCHAR(100) DEFAULT NULL COMMENT '小红书帖子ID（唯一，NULL值不冲突）',
   xsec_token VARCHAR(500) DEFAULT '' COMMENT '小红书token',
   status VARCHAR(20) DEFAULT 'unread' COMMENT '状态: read/unread',
   priority VARCHAR(20) DEFAULT 'medium' COMMENT '优先级: high/medium/low',
@@ -29,5 +29,10 @@ CREATE TABLE IF NOT EXISTS posts (
   INDEX idx_category (category),
   INDEX idx_status (status),
   INDEX idx_date (date),
-  INDEX idx_note_id (note_id)
+  UNIQUE INDEX idx_note_id_unique (note_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='面经帖子表';
+
+-- 迁移: 已有数据库执行以下 SQL 添加唯一约束（MySQL UNIQUE 索引允许多个 NULL）
+-- ALTER TABLE posts MODIFY note_id VARCHAR(100) DEFAULT NULL;
+-- UPDATE posts SET note_id = NULL WHERE note_id = '';
+-- ALTER TABLE posts ADD UNIQUE INDEX idx_note_id_unique (note_id);

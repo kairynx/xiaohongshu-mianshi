@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import PostCard from '../components/PostCard';
@@ -7,6 +8,7 @@ import './HomePage.css';
 
 export default function HomePage() {
   const { posts, dashboardStats, categories } = useApp();
+  const [selectedPost, setSelectedPost] = useState(null);
 
   // 获取最新5条面经
   const recentPosts = [...posts]
@@ -77,7 +79,7 @@ export default function HomePage() {
         </div>
         <div className="posts-grid">
           {recentPosts.map(post => (
-            <PostCard key={post.id} post={post} />
+            <PostCard key={post.id} post={post} onSelect={setSelectedPost} />
           ))}
         </div>
       </div>
@@ -106,6 +108,11 @@ export default function HomePage() {
           ))}
         </div>
       </div>
+
+      {/* 面经详情弹窗 */}
+      {selectedPost && (
+        <PostDetail post={selectedPost} onClose={() => setSelectedPost(null)} />
+      )}
     </div>
   );
 }

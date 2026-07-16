@@ -2,20 +2,21 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import PostCard from '../components/PostCard';
 import PostDetail from '../components/PostDetail';
-import { Search, Filter, SortAsc, SortDesc } from 'lucide-react';
+import { Search, SortAsc, SortDesc } from 'lucide-react';
+import { useWorkerSearch } from '../hooks/useWorkerSearch';
 import './PostsPage.css';
 
 export default function PostsPage() {
-  const { filteredPosts, categories, selectedCategory, setCategory, setSearch, searchQuery } = useApp();
+  const { posts, filteredPosts, categories, selectedCategory, setCategory, searchQuery } = useApp();
+  const { workerIds, highlightQuery, search } = useWorkerSearch(posts);
   const [selectedPost, setSelectedPost] = useState(null);
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [inputValue, setInputValue] = useState(searchQuery);
 
   useEffect(() => {
-    const timer = setTimeout(() => setSearch(inputValue), 300);
-    return () => clearTimeout(timer);
-  }, [inputValue, setSearch]);
+    search(inputValue);
+  }, [inputValue, search]);
 
   const sortedPosts = [...filteredPosts].sort((a, b) => {
     let comparison = 0;
@@ -35,11 +36,17 @@ export default function PostsPage() {
     return sortOrder === 'desc' ? -comparison : comparison;
   });
 
+  // Worker 搜索结果与分类筛选取交集
+  const displayPosts = workerIds !== null
+    ? sortedPosts.filter(p => workerIds.includes(p.id))
+    : sortedPosts;
+  const displayCount = workerIds !== null ? displayPosts.length : filteredPosts.length;
+
   return (
     <div className="posts-page">
       <div className="page-header">
         <h1>📋 面经列表</h1>
-        <p className="page-desc">共 {filteredPosts.length} 条面经记录</p>
+        <p className="page-desc">共 {displayCount} 条面经记录</p>
       </div>
 
       {/* 搜索和筛选栏 */}
@@ -53,7 +60,7 @@ export default function PostsPage() {
             onChange={(e) => setInputValue(e.target.value)}
           />
           {inputValue && (
-            <button className="clear-btn" onClick={() => { setInputValue(''); setSearch(''); }}>✕</button>
+            <button className="clear-btn" onClick={() => { setInputValue(''); }}>✕</button>
           )}
         </div>
 
@@ -86,8 +93,8 @@ export default function PostsPage() {
             {cat.icon} {cat.label}
             <span className="tab-count">
               {cat.key === 'all'
-                ? filteredPosts.length
-                : filteredPosts.filter(p => p.category === cat.key).length}
+                ? posts.length
+                : posts.filter(p => p.category === cat.key).length}
             </span>
           </button>
         ))}
@@ -95,15 +102,15 @@ export default function PostsPage() {
 
       {/* 面经列表 */}
       <div className="posts-grid">
-        {sortedPosts.length > 0 ? (
-          sortedPosts.map(post => (
-            <PostCard key={post.id} post={post} onSelect={setSelectedPost} />
+        {displayPosts.length > 0 ? (
+          displayPosts.map(post => (
+            <PostCard key={post.id} post={post} onSelect={setSelectedPost} highlightQuery={highlightQuery} />
           ))
         ) : (
           <div className="empty-state">
             <span className="empty-icon">🔍</span>
             <p>没有找到匹配的面经</p>
-            <button onClick={() => { setSearch(''); setCategory('all'); }}>清除筛选</button>
+            <button onClick={() => { setInputValue(''); setCategory('all'); }}>清除筛选</button>
           </div>
         )}
       </div>

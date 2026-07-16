@@ -2,7 +2,20 @@ import { useApp } from '../context/AppContext';
 import { CATEGORY_COLORS } from '../constants';
 import './PostCard.css';
 
-export default function PostCard({ post, onSelect }) {
+// 安全高亮：先 escape 再包裹 <mark>
+function safeHighlight(text, query) {
+  if (!query || !text) return String(text || '');
+  const escaped = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapedQuery})`, 'gi');
+  return escaped.replace(regex, '<mark>$1</mark>');
+}
+
+export default function PostCard({ post, onSelect, highlightQuery }) {
   const { toggleStatus, deletePost, setPriority } = useApp();
 
   const priorityLabels = {
@@ -63,10 +76,13 @@ export default function PostCard({ post, onSelect }) {
       </div>
 
       <div className="card-body" onClick={() => onSelect(post)}>
-        <h3 className="card-title">{post.title}</h3>
-        <p className="card-preview">
-          {post.content.replace(/#{1,6}\s/g, '').replace(/\*\*/g, '').substring(0, 120)}...
-        </p>
+        <h3 className="card-title" dangerouslySetInnerHTML={{ __html: safeHighlight(post.title, highlightQuery) }} />
+        <p className="card-preview" dangerouslySetInnerHTML={{
+          __html: safeHighlight(
+            (post.content || '').replace(/#{1,6}\s/g, '').replace(/\*\*/g, '').substring(0, 120),
+            highlightQuery
+          ) + '...'
+        }} />
       </div>
 
       <div className="card-footer">

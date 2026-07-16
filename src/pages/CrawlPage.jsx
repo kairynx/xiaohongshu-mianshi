@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import PostDetail from '../components/PostDetail';
 import { CATEGORY_BG_COLORS, CATEGORY_COLORS } from '../constants';
-import { Globe, Search, RefreshCw, CheckCircle, AlertCircle, Loader, Wifi, WifiOff, Link, ExternalLink } from 'lucide-react';
+import { Globe, Search, RefreshCw, CheckCircle, AlertCircle, Loader, Wifi, WifiOff, QrCode } from 'lucide-react';
 import './CrawlPage.css';
 
 // 统一使用相对路径，Docker 和本地开发都通过同一端口访问
@@ -37,7 +38,14 @@ export default function CrawlPage() {
   const [customKeyword, setCustomKeyword] = useState('');
   const [crawlLog, setCrawlLog] = useState([]);
   const [crawlResults, setCrawlResults] = useState([]);
-  const [sortBy, setSortBy] = useState('综合');
+  const [previewPost, setPreviewPost] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [serverJobId, setServerJobId] = useState(null);
+  const [serverJob, setServerJob] = useState(null);
+  const [showQR, setShowQR] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [quota, setQuota] = useState(null);
+  const qrPollRef = useRef(null);
 
   const addLog = (message, type = 'info') => {
     setCrawlLog(prev => [...prev, { time: new Date().toLocaleTimeString(), message, type }]);
@@ -45,44 +53,112 @@ export default function CrawlPage() {
 
   // 检查 MCP 服务状态
   useEffect(() => {
-    checkMcpStatus();
+    const controller = new AbortController();
+    checkMcpStatus(controller.signal);
+    return () => controller.abort();
   }, []);
 
-  const checkMcpStatus = async () => {
+  const fetchQuota = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mcp/quota`);
+      const data = await res.json();
+      if (data.success) setQuota(data.data);
+    } catch { /* ignore */ }
+  };
+
+  const checkMcpStatus = async (signal) => {
     setMcpStatus('checking');
     try {
-      const res = await fetch(`${API_BASE}/mcp/status`);
+      const res = await fetch(`${API_BASE}/mcp/status`, { signal });
       const data = await res.json();
       if (data.connected) {
         setMcpStatus('connected');
-        setLoginStatus(data.data);
-        addLog('✅ MCP 服务已连接', 'success');
+        const statusText = typeof data.data === 'string' ? data.data : '';
+        const loggedIn = statusText.includes('已登录') && !statusText.includes('未登录');
+        setLoginStatus({ text: statusText, loggedIn });
+        fetchQuota();
+        addLog(loggedIn ? '✅ MCP 已连接，已登录小红书' : '⚠️ MCP 已连接，但未登录小红书', loggedIn ? 'success' : 'error');
       } else {
         setMcpStatus('disconnected');
+        setLoginStatus(null);
         addLog(`❌ MCP 服务未连接: ${data.error || '未知错误'}`, 'error');
       }
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError') return;
       setMcpStatus('disconnected');
+      setLoginStatus(null);
       addLog('❌ 无法连接到后端服务，请确保已启动: node server/index.js', 'error');
     }
   };
 
-  // 检查登录状态
-  const handleCheckLogin = async () => {
+  // 获取扫码登录二维码
+  const handleGetQRCode = async () => {
+    setQrLoading(true);
+    setShowQR(true);
+    addLog('📱 正在获取登录二维码...', 'info');
     try {
-      addLog('🔍 正在检查小红书登录状态...', 'info');
-      const res = await fetch(`${API_BASE}/mcp/login/check`);
-      const data = await res.json();
-      if (data.success) {
-        setLoginStatus(data.data);
-        addLog(`✅ 登录状态: ${JSON.stringify(data.data)}`, 'success');
-      } else {
-        addLog(`❌ 检查登录失败: ${data.error}`, 'error');
-      }
+      await fetch(`${API_BASE}/mcp/login/qrcode/img`);
+      // 二维码获取成功，图片通过 <img> 标签直接加载
+      addLog('📱 请使用小红书 App 扫描二维码登录', 'info');
     } catch (err) {
-      addLog(`❌ 请求失败: ${err.message}`, 'error');
+      addLog(`❌ 获取二维码失败: ${err.message}`, 'error');
+      setShowQR(false);
+    } finally {
+      setQrLoading(false);
     }
   };
+
+  // 扫码后检查是否登录成功
+  const handleCheckAfterScan = async () => {
+    addLog('🔍 检查是否登录成功...', 'info');
+    try {
+      const res = await fetch(`${API_BASE}/mcp/status`);
+      const data = await res.json();
+      const statusText = typeof data.data === 'string' ? data.data : '';
+      const loggedIn = statusText.includes('已登录') && !statusText.includes('未登录');
+      setLoginStatus({ text: statusText, loggedIn });
+      if (loggedIn) {
+        addLog('✅ 登录成功！现在可以使用 MCP 真实抓取了', 'success');
+        setShowQR(false);
+        if (qrPollRef.current) {
+          clearInterval(qrPollRef.current);
+          qrPollRef.current = null;
+        }
+      } else {
+        addLog('⏳ 尚未扫码，请使用小红书 App 扫描二维码', 'info');
+      }
+    } catch (err) {
+      addLog(`❌ 检查失败: ${err.message}`, 'error');
+    }
+  };
+
+  // 开始轮询登录状态
+  const handleStartPolling = () => {
+    if (qrPollRef.current) return;
+    addLog('🔄 开始自动检测登录状态...', 'info');
+    qrPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/mcp/status`);
+        const data = await res.json();
+        const statusText = typeof data.data === 'string' ? data.data : '';
+        const loggedIn = statusText.includes('已登录') && !statusText.includes('未登录');
+        setLoginStatus({ text: statusText, loggedIn });
+        if (loggedIn) {
+          addLog('✅ 登录成功！', 'success');
+          setShowQR(false);
+          clearInterval(qrPollRef.current);
+          qrPollRef.current = null;
+        }
+      } catch { /* 忽略轮询错误 */ }
+    }, 3000);
+  };
+
+  // 组件卸载时清理轮询
+  useEffect(() => {
+    return () => {
+      if (qrPollRef.current) clearInterval(qrPollRef.current);
+    };
+  }, []);
 
   // MCP 真实抓取
   const mcpCrawl = async () => {
@@ -97,7 +173,6 @@ export default function CrawlPage() {
 
     addLog('🚀 开始通过 MCP 服务抓取小红书面经...', 'info');
     addLog(`📋 已选择 ${selectedKeywords.length} 个关键词`, 'info');
-    addLog(`📊 排序方式: ${sortBy}`, 'info');
 
     let allResults = [];
 
@@ -119,28 +194,61 @@ export default function CrawlPage() {
       } catch (err) {
         addLog(`❌ "${keyword}" 搜索失败: ${err.message}`, 'error');
       }
+
+      // 降低封号风险：关键词间随机延迟 5-15 秒（最后一个关键词不用等）
+      if (i < selectedKeywords.length - 1) {
+        const delay = 5 + Math.random() * 10;
+        addLog(`⏳ 等待 ${Math.round(delay)} 秒后搜索下一个关键词...`, 'info');
+        await new Promise(resolve => setTimeout(resolve, delay * 1000));
+      }
+    }
+
+    // 按 feed.id 去重（多关键词可能搜到相同帖子）
+    const seenIds = new Set();
+    allResults = allResults.filter(r => {
+      const fid = r.id || r.note_id;
+      if (!fid || seenIds.has(fid)) return false;
+      seenIds.add(fid);
+      return true;
+    });
+    if (allResults.length < seenIds.size + (seenIds.size - allResults.length)) {
+      addLog(`🔗 去重后保留 ${allResults.length} 条唯一结果`, 'info');
     }
 
     // 转换数据格式
     if (allResults.length > 0) {
       // 先获取帖子详情（面试内容）
-      addLog(`📖 正在获取 ${Math.min(allResults.length, 10)} 篇帖子详情（含图片OCR识别，每篇约10秒）...`, 'info');
+      const batchLimit = Math.min(allResults.length, 10);
+      addLog(`📖 正在获取 ${batchLimit} 篇帖子详情（含图片OCR识别，每篇约10秒）...`, 'info');
       try {
         const batchRes = await fetch(`${API_BASE}/mcp/feed/batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ feeds: allResults })
+          body: JSON.stringify({ feeds: allResults.slice(0, batchLimit) })
         });
         const batchData = await batchRes.json();
+        if (batchData.quota) setQuota(batchData.quota);
         if (batchData.success && batchData.data.length > 0) {
           allResults = batchData.data;
           addLog(`✅ 成功获取 ${batchData.total} 篇帖子详情`, 'success');
+          if (batchData.quota && batchData.quota.remaining <= 0) {
+            addLog(`💡 今日已抓取 ${batchData.quota.used} 条，超过建议量 ${batchData.quota.limit} 条，请注意封号风险`, 'error');
+          }
         } else {
           addLog(`⚠️ 部分详情获取失败，使用列表数据`, 'error');
         }
       } catch (err) {
         addLog(`⚠️ 详情获取失败: ${err.message}，使用列表数据`, 'error');
       }
+
+      // 转换前去重（batch 返回的数据可能有重复）
+      const seenConvert = new Set();
+      allResults = allResults.filter(r => {
+        const fid = r.id || r.note_id;
+        if (!fid || seenConvert.has(fid)) return false;
+        seenConvert.add(fid);
+        return true;
+      });
 
       // 再转换数据格式
       addLog('🔄 正在转换数据格式...', 'info');
@@ -162,7 +270,7 @@ export default function CrawlPage() {
       }
     }
 
-    addLog(`📊 抓取完成！共获取 ${allResults.length} 条原始数据`, 'success');
+    addLog(`📊 抓取完成！共获取 ${allResults.length} 条面经`, 'success');
     setIsCrawling(false);
   };
 
@@ -221,6 +329,61 @@ export default function CrawlPage() {
     setIsCrawling(false);
   };
 
+  const serverCrawl = async () => {
+    if (selectedKeywords.length === 0) {
+      addLog('请至少选择一个搜索关键词', 'error');
+      return;
+    }
+    setIsCrawling(true);
+    setCrawlLog([]);
+    addLog('🚀 提交服务端 Job...', 'info');
+    try {
+      const res = await fetch(`${API_BASE}/agent/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: selectedKeywords }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      const jobId = data.data.id;
+      setServerJobId(jobId);
+      addLog(`✅ Job 已创建: ${jobId}`, 'success');
+      addLog('📡 订阅进度...', 'info');
+
+      const es = new EventSource(`${API_BASE}/agent/jobs/${jobId}/events`);
+      es.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'snapshot' || msg.type === 'update') {
+          setServerJob(msg.job);
+          const latest = msg.job.steps[msg.job.steps.length - 1];
+          if (latest) addLog(latest.error ? `❌ ${latest.message}` : `  ${latest.message}`, latest.error ? 'error' : 'info');
+          if (msg.job.status === 'done') {
+            addLog(`🎉 完成！保存 ${msg.job.result?.saved} 条`, 'success');
+            setIsCrawling(false);
+            es.close();
+            // 刷新列表
+            fetch(`${API_BASE}/posts`).then(r => r.json()).then(d => {
+              if (d.success) window.dispatchEvent(new CustomEvent('posts-updated', { detail: d.data }));
+            });
+          }
+          if (msg.job.status === 'failed') {
+            addLog(`❌ Job 失败: ${msg.job.error}`, 'error');
+            setIsCrawling(false);
+            es.close();
+          }
+        }
+      };
+      es.onerror = () => {
+        addLog('⚠️ SSE 连接断开', 'error');
+        setIsCrawling(false);
+        es.close();
+      };
+    } catch (err) {
+      addLog(`❌ 提交失败: ${err.message}`, 'error');
+      setIsCrawling(false);
+    }
+  };
+
   const handleKeywordToggle = (keyword) => {
     setSelectedKeywords(prev => {
       const next = prev.includes(keyword) ? prev.filter(k => k !== keyword) : [...prev, keyword];
@@ -247,15 +410,25 @@ export default function CrawlPage() {
     }
   };
 
-  const handleSaveResults = () => {
-    if (crawlResults.length > 0) {
-      addPosts(crawlResults);
-      addLog(`💾 已保存 ${crawlResults.length} 条面经到数据库`, 'success');
-      setCrawlResults([]);
+  const handleSaveResults = async () => {
+    if (crawlResults.length === 0) return;
+    setIsSaving(true);
+    try {
+      const res = await addPosts(crawlResults);
+      if (res && res.success) {
+        addLog(`💾 已保存 ${crawlResults.length} 条面经到数据库`, 'success');
+        setCrawlResults([]);
+      } else {
+        addLog(`❌ 保存失败: ${res?.error || '未知错误'}，请检查 MySQL 连接后重试`, 'error');
+      }
+    } catch (err) {
+      addLog(`❌ 保存失败: ${err.message}，请检查后端服务和 MySQL 连接`, 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const startCrawl = mode === 'mcp' ? mcpCrawl : simulateCrawl;
+  const startCrawl = mode === 'mcp' ? mcpCrawl : mode === 'simulate' ? simulateCrawl : serverCrawl;
 
   return (
     <div className="crawl-page">
@@ -275,7 +448,12 @@ export default function CrawlPage() {
             <span className={`status-badge ${mcpStatus}`}>
               {mcpStatus === 'checking' ? '检测中...' : mcpStatus === 'connected' ? '已连接' : '未连接'}
             </span>
-            <button className="refresh-btn" onClick={checkMcpStatus}>
+            {quota && (
+              <span className={`status-badge ${quota.remaining <= 0 ? 'checking' : 'connected'}`} title={`建议每日不超过 ${quota.limit} 条，已抓 ${quota.used} 条`}>
+                今日: {quota.used}/{quota.limit}
+              </span>
+            )}
+            <button className="refresh-btn" onClick={() => checkMcpStatus()}>
               <RefreshCw size={14} />
               重新检测
             </button>
@@ -284,14 +462,49 @@ export default function CrawlPage() {
 
         {mcpStatus === 'connected' && (
           <div className="mcp-actions">
-            <button className="mcp-action-btn" onClick={handleCheckLogin}>
-              🔑 检查登录状态
+            <button
+              className={`mcp-action-btn ${loginStatus?.loggedIn ? '' : 'primary'}`}
+              onClick={handleGetQRCode}
+              disabled={qrLoading}
+            >
+              <QrCode size={15} />
+              {qrLoading ? '获取中...' : '扫码登录小红书'}
             </button>
             {loginStatus && (
-              <span className="login-info">
-                {loginStatus.logged_in !== false ? '✅ 已登录' : '⚠️ 未登录，请先登录小红书'}
+              <span className={`login-info ${loginStatus.loggedIn ? 'logged-in' : 'not-logged-in'}`}>
+                {loginStatus.loggedIn ? '✅ 已登录' : '⚠️ 未登录，请扫码登录'}
               </span>
             )}
+            {!loginStatus && (
+              <span className="login-info not-logged-in">登录状态未知</span>
+            )}
+          </div>
+        )}
+
+        {showQR && (
+          <div className="qr-section">
+            <div className="qr-container">
+              <img
+                src={`${API_BASE}/mcp/login/qrcode/img?t=${Date.now()}`}
+                alt="登录二维码"
+                className="qr-image"
+              />
+              <p className="qr-hint">请使用小红书 App 扫描二维码</p>
+            </div>
+            <div className="qr-actions">
+              <button className="mcp-action-btn" onClick={handleCheckAfterScan}>
+                🔍 已扫码，检查登录
+              </button>
+              <button className="mcp-action-btn" onClick={handleStartPolling}>
+                🔄 自动检测（3秒轮询）
+              </button>
+              <button className="mcp-action-btn" onClick={() => {
+                setShowQR(false);
+                if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
+              }}>
+                ✕ 关闭
+              </button>
+            </div>
           </div>
         )}
 
@@ -326,6 +539,12 @@ export default function CrawlPage() {
         >
           🎮 模拟抓取
         </button>
+        <button
+          className={`mode-btn ${mode === 'server' ? 'active' : ''}`}
+          onClick={() => setMode('server')}
+        >
+          🤖 服务端抓取
+        </button>
       </div>
 
       {/* 搜索设置 */}
@@ -335,20 +554,6 @@ export default function CrawlPage() {
           搜索关键词
         </h3>
         <p className="section-desc">选择要抓取的面经关键词{mode === 'mcp' ? '，将通过 MCP 服务真实搜索小红书' : ''}</p>
-
-        {mode === 'mcp' && (
-          <div className="sort-options">
-            <label>排序方式：</label>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="综合">综合</option>
-              <option value="最新">最新</option>
-              <option value="最多点赞">最多点赞</option>
-              <option value="最多收藏">最多收藏</option>
-              <option value="最多评论">最多评论</option>
-            </select>
-            <label className="filter-label">时间范围：一周内</label>
-          </div>
-        )}
 
         <div className="keywords-grid">
           {[...SEARCH_KEYWORDS, ...customKeywords.filter(k => !SEARCH_KEYWORDS.includes(k))].map(keyword => {
@@ -407,14 +612,17 @@ export default function CrawlPage() {
           {isCrawling ? (
             <><Loader size={18} className="spin" /> 正在抓取中...</>
           ) : (
-            <><Globe size={18} /> {mode === 'mcp' ? 'MCP 真实抓取' : '模拟抓取'}</>
+            <><Globe size={18} /> {mode === 'mcp' ? 'MCP 真实抓取' : mode === 'simulate' ? '模拟抓取' : '服务端抓取'}</>
           )}
         </button>
 
         {crawlResults.length > 0 && (
-          <button className="save-btn" onClick={handleSaveResults}>
-            <CheckCircle size={18} />
-            保存结果 ({crawlResults.length} 条)
+          <button className="save-btn" onClick={handleSaveResults} disabled={isSaving}>
+            {isSaving ? (
+              <><Loader size={18} className="spin" /> 保存中...</>
+            ) : (
+              <><CheckCircle size={18} /> 保存结果 ({crawlResults.length} 条)</>
+            )}
           </button>
         )}
       </div>
@@ -451,7 +659,7 @@ export default function CrawlPage() {
           </h3>
           <div className="results-preview">
             {crawlResults.map(post => (
-              <div key={post.id} className="result-item">
+              <div key={post.id} className="result-item" onClick={() => setPreviewPost(post)} style={{ cursor: 'pointer' }}>
                 <span className="result-category" style={{
                   background: CATEGORY_BG_COLORS[post.category],
                   color: CATEGORY_COLORS[post.category]
@@ -476,6 +684,10 @@ export default function CrawlPage() {
           所有数据仅用于个人学习参考。
         </p>
       </div>
+
+      {previewPost && (
+        <PostDetail post={previewPost} onClose={() => setPreviewPost(null)} />
+      )}
     </div>
   );
 }

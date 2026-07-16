@@ -1,0 +1,35 @@
+面经助手 - 待办清单 (2025-05-27)
+
+========== 已修复 ==========
+✅ MCP 抓取超时 → callMcp 所有错误重试 + 批量抓取前强制 resetSession
+✅ 10条变2条 → 无 xsecToken 的帖子不再丢弃，用搜索数据填充
+✅ 图片下载失败 → 添加 User-Agent + Referer 请求头
+✅ ImageMagick → 替换为 sharp（纯 Node.js，跨平台）
+✅ OCR PSM 回退 → PSM 6 失败自动尝试 PSM 3，带中文质量检测
+✅ MCP detail 数组格式 → 兼容逐字拆分格式（拼接数字key的字符串）
+✅ MCP SSE 会话 → 确认 xiaohongshu-mcp v2 只需 POST，已移除 GET 步骤
+
+========== 待验证 ==========
+✅ Tesseract OCR 已验证通过（2026-06-10）
+   → 图片中简历内容完整识别：教育背景、技能、实习经历、项目经历全部提取
+   → 中文识别准确，sharp 预处理 + PSM 6→3 fallback 工作正常
+
+========== 前端重功能（简历加分）==========
+🔲 Canvas 关键词云（推荐优先）
+   - 从面经标签/内容中提取高频词
+   - Canvas 绘制：贝塞尔曲线排版 + hit 检测 + RAF 动画
+   - 放到首页或看板页，视觉直观
+
+🔲 Web Worker 文本搜索
+   - Worker 线程对 OCR 长文本做分词索引
+   - 主线程不阻塞，搜索结果实时高亮
+   - 面试亮点：SharedArrayBuffer、postMessage、性能优化
+
+🔲 PWA 离线支持
+   - Service Worker 缓存策略
+   - IndexedDB 替代 localStorage 做笔记持久化
+   - manifest.json 实现可安装
+
+========== 文档 ==========
+🔲 README 已更新（sharp 替换 ImageMagick）
+🔲 简历描述待确认（参考 README 里的技术栈）

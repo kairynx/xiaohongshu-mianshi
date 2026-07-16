@@ -30,6 +30,24 @@ const initialState = {
   }
 };
 
+// 纯函数：根据当前筛选条件过滤帖子
+function applyFilters(posts, selectedCategory, searchQuery) {
+  let result = posts;
+  if (selectedCategory !== 'all') {
+    result = result.filter(p => p.category === selectedCategory);
+  }
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    result = result.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      (p.content || '').toLowerCase().includes(q) ||
+      (p.tags || []).some(t => t.toLowerCase().includes(q)) ||
+      p.author.toLowerCase().includes(q)
+    );
+  }
+  return result;
+}
+
 // 计算统计数据
 function computeStats(posts) {
   const stats = {
@@ -66,45 +84,28 @@ function computeStats(posts) {
 function appReducer(state, action) {
   switch (action.type) {
     case 'SET_POSTS': {
+      const posts = action.payload;
       return {
         ...state,
-        posts: action.payload,
-        filteredPosts: state.selectedCategory === 'all'
-          ? action.payload
-          : action.payload.filter(p => p.category === state.selectedCategory),
+        posts,
+        filteredPosts: applyFilters(posts, state.selectedCategory, state.searchQuery),
         loading: false,
-        dashboardStats: computeStats(action.payload)
+        dashboardStats: computeStats(posts)
       };
     }
     case 'SET_CATEGORY': {
       const category = action.payload;
-      const filtered = category === 'all'
-        ? state.posts
-        : state.posts.filter(p => p.category === category);
       return {
         ...state,
         selectedCategory: category,
-        filteredPosts: filtered
+        filteredPosts: applyFilters(state.posts, category, state.searchQuery)
       };
     }
     case 'SET_SEARCH': {
-      const query = action.payload.toLowerCase();
-      let filtered = state.posts;
-      if (state.selectedCategory !== 'all') {
-        filtered = filtered.filter(p => p.category === state.selectedCategory);
-      }
-      if (query) {
-        filtered = filtered.filter(p =>
-          p.title.toLowerCase().includes(query) ||
-          (p.content || '').toLowerCase().includes(query) ||
-          (p.tags || []).some(t => t.toLowerCase().includes(query)) ||
-          p.author.toLowerCase().includes(query)
-        );
-      }
       return {
         ...state,
         searchQuery: action.payload,
-        filteredPosts: filtered
+        filteredPosts: applyFilters(state.posts, state.selectedCategory, action.payload)
       };
     }
     case 'SELECT_POST': {
@@ -114,19 +115,14 @@ function appReducer(state, action) {
       };
     }
     case 'TOGGLE_STATUS': {
+      const { id, newStatus } = action.payload;
       const updatedPosts = state.posts.map(p =>
-        p.id === action.payload
-          ? { ...p, status: p.status === 'read' ? 'unread' : 'read' }
-          : p
+        p.id === id ? { ...p, status: newStatus } : p
       );
       return {
         ...state,
         posts: updatedPosts,
-        filteredPosts: state.filteredPosts.map(p =>
-          p.id === action.payload
-            ? { ...p, status: p.status === 'read' ? 'unread' : 'read' }
-            : p
-        ),
+        filteredPosts: applyFilters(updatedPosts, state.selectedCategory, state.searchQuery),
         dashboardStats: computeStats(updatedPosts)
       };
     }
@@ -138,9 +134,7 @@ function appReducer(state, action) {
       return {
         ...state,
         posts: updatedPosts,
-        filteredPosts: state.filteredPosts.map(p =>
-          p.id === id ? { ...p, priority } : p
-        ),
+        filteredPosts: applyFilters(updatedPosts, state.selectedCategory, state.searchQuery),
         dashboardStats: computeStats(updatedPosts)
       };
     }
@@ -149,20 +143,19 @@ function appReducer(state, action) {
       return {
         ...state,
         posts: updatedPosts,
-        filteredPosts: state.filteredPosts.filter(p => p.id !== action.payload),
+        filteredPosts: applyFilters(updatedPosts, state.selectedCategory, state.searchQuery),
         selectedPost: state.selectedPost?.id === action.payload ? null : state.selectedPost,
         dashboardStats: computeStats(updatedPosts)
       };
     }
     case 'ADD_POSTS': {
-      // 合并去重
       const existingIds = new Set(state.posts.map(p => p.noteId || p.id));
       const newPosts = action.payload.filter(p => !existingIds.has(p.noteId || p.id));
       const merged = [...newPosts, ...state.posts];
       return {
         ...state,
         posts: merged,
-        filteredPosts: merged,
+        filteredPosts: applyFilters(merged, state.selectedCategory, state.searchQuery),
         dashboardStats: computeStats(merged)
       };
     }
@@ -222,40 +215,57 @@ export function AppProvider({ children }) {
     const post = state.posts.find(p => p.id === id);
     if (!post) return;
     const newStatus = post.status === 'read' ? 'unread' : 'read';
-    dispatch({ type: 'TOGGLE_STATUS', payload: id });
-    // 同步到数据库
+    const prevPosts = state.posts;
+    dispatch({ type: 'TOGGLE_STATUS', payload: { id, newStatus } });
     fetch(`${API_BASE}/posts/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus })
-    }).catch(() => dispatch({ type: 'SET_ERROR', payload: '更新状态失败，请检查后端服务' }));
+    }).then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); })
+      .catch(() => {
+        dispatch({ type: 'SET_POSTS', payload: prevPosts });
+        dispatch({ type: 'SET_ERROR', payload: '更新状态失败，请检查后端服务' });
+      });
   }, [state.posts]);
 
   const setPriority = useCallback((id, priority) => {
+    const prevPosts = state.posts;
     dispatch({ type: 'SET_PRIORITY', payload: { id, priority } });
-    // 同步到数据库
     fetch(`${API_BASE}/posts/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priority })
-    }).catch(() => dispatch({ type: 'SET_ERROR', payload: '更新优先级失败' }));
-  }, []);
+    }).then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); })
+      .catch(() => {
+        dispatch({ type: 'SET_POSTS', payload: prevPosts });
+        dispatch({ type: 'SET_ERROR', payload: '更新优先级失败' });
+      });
+  }, [state.posts]);
 
   const deletePost = useCallback((id) => {
+    const prevPosts = state.posts;
     dispatch({ type: 'DELETE_POST', payload: id });
-    // 从数据库删除
     fetch(`${API_BASE}/posts/${id}`, { method: 'DELETE' })
-      .catch(() => dispatch({ type: 'SET_ERROR', payload: '删除失败' }));
-  }, []);
+      .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); })
+      .catch(() => {
+        dispatch({ type: 'SET_POSTS', payload: prevPosts });
+        dispatch({ type: 'SET_ERROR', payload: '删除失败' });
+      });
+  }, [state.posts]);
 
   const addPosts = useCallback((posts) => {
     dispatch({ type: 'ADD_POSTS', payload: posts });
-    // 保存到数据库
-    fetch(`${API_BASE}/posts`, {
+    return fetch(`${API_BASE}/posts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(posts)
-    }).catch(() => dispatch({ type: 'SET_ERROR', payload: '保存到数据库失败' }));
+    }).then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }).catch(err => {
+      dispatch({ type: 'SET_ERROR', payload: '保存到数据库失败' });
+      throw err;
+    });
   }, []);
 
   const value = {
