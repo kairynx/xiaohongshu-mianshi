@@ -134,4 +134,11 @@ function parseContent(c) {
   return c;
 }
 
-module.exports = { callMcp, parseContent, resetSession };
+// 随机延迟，模仿人为操作，降低封号风险（默认 3-12 秒）
+function humanDelay(minSec = 3, maxSec = 12) {
+  const sec = minSec + Math.random() * (maxSec - minSec);
+  console.log(`  [throttle] 随机延迟 ${sec.toFixed(1)}s（模仿人为操作）`);
+  return new Promise(resolve => setTimeout(resolve, sec * 1000));
+}
+
+module.exports = { callMcp, parseContent, resetSession, humanDelay };

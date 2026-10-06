@@ -1,4 +1,4 @@
-const { callMcp, parseContent, resetSession } = require('../services/mcp');
+const { callMcp, parseContent, resetSession, humanDelay } = require('../services/mcp');
 const { ocrFeedDetail } = require('../services/ocr');
 const { sanitizePost } = require('../services/validation');
 const { getPool, saveOrUpdatePost } = require('../services/db');
@@ -60,6 +60,7 @@ async function crawlKeywords(keywords, options = {}) {
   let allFeeds = [];
 
   for (let i = 0; i < keywords.length; i++) {
+    if (i > 0) await humanDelay();
     const keyword = keywords[i];
     onStep('search', `搜索「${keyword}」(${i + 1}/${keywords.length})`);
     try {
@@ -145,7 +146,7 @@ async function crawlKeywords(keywords, options = {}) {
       resetSession();
     }
 
-    if (i < limit - 1) await new Promise(r => setTimeout(r, 2000));
+    if (i < limit - 1) await humanDelay();
   }
 
   onStep('save', `转换并入库 ${detailResults.length} 条`);
