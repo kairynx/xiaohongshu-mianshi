@@ -1,7 +1,8 @@
 ﻿import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Star } from 'lucide-react';
+import { Star, Sparkles } from 'lucide-react';
 import { CATEGORY_COLORS } from '../constants';
 import { fetchNote, saveNote } from '../utils/notesApi';
+import { extractPost } from '../utils/agentApi';
 import './PostDetail.css';
 
 export default function PostDetail({ post, onClose }) {
@@ -9,6 +10,9 @@ export default function PostDetail({ post, onClose }) {
   const [noteContent, setNoteContent] = useState('');
   const [starred, setStarred] = useState(false);
   const [noteLoaded, setNoteLoaded] = useState(false);
+  const [metaState, setMetaState] = useState(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState('');
   const saveTimer = useRef(null);
   const mountedRef = useRef(true);
 
@@ -41,6 +45,9 @@ export default function PostDetail({ post, onClose }) {
     setNoteLoaded(false);
     setNoteContent('');
     setStarred(false);
+    setMetaState(post?.meta || null);
+    setExtracting(false);
+    setExtractError('');
 
     const init = async () => {
       try {
@@ -117,7 +124,7 @@ export default function PostDetail({ post, onClose }) {
     });
   };
 
-  const meta = post.meta || null;
+  const meta = metaState;
   const classification = meta?.classification || null;
   const relevance = typeof post.relevance === 'number' ? post.relevance : null;
   const formatPercent = (value) => Math.round((Number(value) || 0) * 100);
@@ -146,6 +153,20 @@ export default function PostDetail({ post, onClose }) {
     );
   };
 
+  const handleExtract = async () => {
+    if (!post || extracting) return;
+    setExtracting(true);
+    setExtractError('');
+    try {
+      const meta = await extractPost(post.id);
+      setMetaState(meta);
+    } catch (e) {
+      setExtractError(e.message || '生成结构化失败');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const toggleStarred = async () => {
     const next = !starred;
     setStarred(next);
@@ -165,6 +186,7 @@ export default function PostDetail({ post, onClose }) {
         post: {
           ...post,
           starred,
+          meta: metaState,
         },
       });
     }
@@ -210,7 +232,7 @@ export default function PostDetail({ post, onClose }) {
         <div className="modal-tabs">
           <button className={`tab ${activeTab === 'content' ? 'active' : ''}`} onClick={() => setActiveTab('content')}>📑 面经内容</button>
           <button className={`tab ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>📋 我的笔记</button>
-          {meta && <button className={`tab ${activeTab === 'meta' ? 'active' : ''}`} onClick={() => setActiveTab('meta')}>🧠 结构化</button>}
+          <button className={`tab ${activeTab === 'meta' ? 'active' : ''}`} onClick={() => setActiveTab('meta')}>🧠 结构化</button>
         </div>
 
         <div className="modal-body">
@@ -232,6 +254,17 @@ export default function PostDetail({ post, onClose }) {
             </div>
           ) : (
             <div className="meta-view">
+              {!meta ? (
+                <div className="meta-empty-state">
+                  <Sparkles size={28} />
+                  <p>该帖子还没有结构化分析，点击下方按钮用 AI 提取公司、岗位、面试题与知识点。</p>
+                  <button className="extract-btn" onClick={handleExtract} disabled={extracting}>
+                    {extracting ? '生成中...' : '生成结构化'}
+                  </button>
+                  {extractError && <div className="extract-error">{extractError}</div>}
+                </div>
+              ) : (
+                <>
               <div className="meta-section">
                 <h4 className="meta-section-title">基本信息</h4>
                 <div className="meta-kv-row"><span className="meta-key">公司</span><span className="meta-value">{meta?.company || '未识别'}</span></div>
@@ -305,6 +338,8 @@ export default function PostDetail({ post, onClose }) {
                   <div className="meta-kv-row"><span className="meta-key">不匹配理由</span>{renderChips(classification.mismatched, '暂无', 'mismatch-chip')}</div>
                   <div className="meta-kv-row"><span className="meta-key">分类时间</span><span className="meta-value">{formatTime(classification.classified_at)}</span></div>
                 </div>
+              )}
+                </>
               )}
             </div>
           )}

@@ -414,6 +414,54 @@
   padding: 8px 0;
 }
 
+/* 结构化空态 */
+.meta-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px dashed #e2e8f0;
+  border-radius: 16px;
+  color: #94a3b8;
+}
+
+.meta-empty-state p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.extract-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.extract-btn:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.extract-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.extract-error {
+  color: #dc2626;
+  font-size: 13px;
+}
+
 /* Markdown 渲染样式 */
 .content-view {
   line-height: 1.8;
