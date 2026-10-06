@@ -3,9 +3,11 @@ import { Star, Sparkles } from 'lucide-react';
 import { CATEGORY_COLORS } from '../constants';
 import { fetchNote, saveNote } from '../utils/notesApi';
 import { extractPost } from '../utils/agentApi';
+import { useApp } from '../context/AppContext';
 import './PostDetail.css';
 
 export default function PostDetail({ post, onClose }) {
+  const { updatePostMeta } = useApp();
   const [activeTab, setActiveTab] = useState('content');
   const [noteContent, setNoteContent] = useState('');
   const [starred, setStarred] = useState(false);
@@ -160,6 +162,7 @@ export default function PostDetail({ post, onClose }) {
     try {
       const meta = await extractPost(post.id);
       setMetaState(meta);
+      updatePostMeta(post.id, meta);
     } catch (e) {
       setExtractError(e.message || '生成结构化失败');
     } finally {

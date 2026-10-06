@@ -138,6 +138,18 @@ function appReducer(state, action) {
         dashboardStats: computeStats(updatedPosts)
       };
     }
+    case 'UPDATE_POST_META': {
+      const { id, meta } = action.payload;
+      const updatedPosts = state.posts.map(p =>
+        p.id === id ? { ...p, meta } : p
+      );
+      return {
+        ...state,
+        posts: updatedPosts,
+        filteredPosts: applyFilters(updatedPosts, state.selectedCategory, state.searchQuery),
+        dashboardStats: computeStats(updatedPosts)
+      };
+    }
     case 'DELETE_POST': {
       const updatedPosts = state.posts.filter(p => p.id !== action.payload);
       return {
@@ -242,6 +254,10 @@ export function AppProvider({ children }) {
       });
   }, [state.posts]);
 
+  const updatePostMeta = useCallback((id, meta) => {
+    dispatch({ type: 'UPDATE_POST_META', payload: { id, meta } });
+  }, []);
+
   const deletePost = useCallback((id) => {
     const prevPosts = state.posts;
     dispatch({ type: 'DELETE_POST', payload: id });
@@ -276,6 +292,7 @@ export function AppProvider({ children }) {
     selectPost,
     toggleStatus,
     setPriority,
+    updatePostMeta,
     deletePost,
     addPosts,
   };
