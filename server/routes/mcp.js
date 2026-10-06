@@ -1,14 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { callMcp, parseContent, resetSession } = require('../services/mcp');
+const { callMcp, parseContent, resetSession, humanDelay } = require('../services/mcp');
 const { ocrFeedDetail } = require('../services/ocr');
 const { sanitizeString } = require('../services/validation');
 const { getQuota, isOverLimit, addFetched, DAILY_LIMIT } = require('../services/quotaTracker');
-
-function randomSleep(minSec, maxSec) {
-  const ms = (minSec + Math.random() * (maxSec - minSec)) * 1000;
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 router.get('/status', async (req, res) => {
   try {
@@ -223,8 +218,8 @@ router.post('/feed/batch', async (req, res) => {
 
       addFetched(1);
 
-      // 限流：随机间隔 3-8 秒，降低封号风险
-      if (i < limit - 1) await randomSleep(3, 8);
+      // 限流：随机间隔 3-12 秒，模仿人为操作，降低封号风险
+      if (i < limit - 1) await humanDelay();
     }
 
     const quota = getQuota();
